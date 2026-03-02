@@ -15,8 +15,6 @@ ipython での実行:
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
 from stis_analysis.processing import ProcessingPipeline
 
 # ------------------------------------------------------------------ #
@@ -72,17 +70,8 @@ for p in result.output_paths:
 
 SLIT_INDEX = 10  # 空間方向の確認スリット行
 
-fig, axes = plt.subplots(1, len(result.before.images), figsize=(5 * len(result.before.images), 4))
-if len(result.before.images) == 1:
-    axes = [axes]
-
-for ax, image in zip(axes, result.before.images):
-    image.plot_continuum_fit(
-        slit_index=SLIT_INDEX,
-        continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
-        recession_velocity=RECESSION_VELOCITY,
-        ax=ax,
-    )
-
-plt.tight_layout()
-plt.show()
+result.plot_continuum_fit(
+    slit_index=SLIT_INDEX,
+    continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
+    recession_velocity=RECESSION_VELOCITY,
+)
