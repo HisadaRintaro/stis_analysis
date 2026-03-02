@@ -17,11 +17,13 @@ from stis_analysis.lacosmic import ImageCollection
 # 設定（必要に応じて変更）
 # ------------------------------------------------------------------ #
 
-HST_DIR = Path("../HST")            # _flt.fits があるルートディレクトリ
-OUTPUT_DIR = Path("../output/lac")  # _lac.fits の出力先
+HST_DIR = Path("../../HST")            # _flt.fits があるルートディレクトリ
+OUTPUT_DIR = Path("../../output/lac")  # _lac.fits の出力先
 
-SUFFIX = "_flt"
-DEPTH = 1  # HST/o56502010/o56502010_flt.fits の 1 階層下
+SUFFIX = "_crj"
+DEPTH = 1  # HST/o56502010/o56502010_crj.fits の 1 階層下
+
+DQ_FLAGS: int = 16
 
 LA_COSMIC_PARAMS = dict(
     contrast=5.0,
@@ -51,7 +53,7 @@ for p in instrument.path_list:
 
 # --- 読み込み ---
 readers = ReaderCollection.from_paths(instrument.path_list)
-collection = ImageCollection.from_readers(readers, **LA_COSMIC_PARAMS)
+collection = ImageCollection.from_readers(readers, dq_flags=DQ_FLAGS, **LA_COSMIC_PARAMS)
 
 # --- LA-Cosmic 適用 ---
 lac_collection = collection.remove_cosmic_ray()

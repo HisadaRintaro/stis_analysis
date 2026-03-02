@@ -23,16 +23,16 @@ from stis_analysis.processing import ProcessingPipeline
 # 設定（必要に応じて変更）
 # ------------------------------------------------------------------ #
 
-LAC_DIR = Path("../output/lac")     # _lac.fits があるディレクトリ
-OUTPUT_DIR = Path("../output/proc") # _proc.fits の出力先
+LAC_DIR = Path("../../output/lac")     # _lac.fits があるディレクトリ
+OUTPUT_DIR = Path("../../output/proc") # _proc.fits の出力先
 
 RECESSION_VELOCITY = 1148.0         # NGC1068 後退速度 [km/s]
 
 # OIII λ5007 観測波長を v=0 とした相対速度 [km/s] でウィンドウを指定
 # → 輝線（λ4959, λ5007）が重ならない領域を選ぶ
 CONTINUUM_WINDOWS_KMS = [
-    (-4000, -3200),
-    (3000, 4000),
+    (-4000.0, -3200.0),
+    (3000.0, 4000.0),
 ]
 
 # velocity clipping の範囲 [km/s]
@@ -52,6 +52,7 @@ pipeline = ProcessingPipeline(
     v_min=V_MIN,
     v_max=V_MAX,
     suffix="_lac",
+    depth=0,
 )
 
 result = pipeline.run(
