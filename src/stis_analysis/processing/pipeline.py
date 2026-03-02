@@ -22,7 +22,7 @@ import numpy as np
 from stis_analysis.core.fits_reader import ReaderCollection
 from stis_analysis.core.instrument import InstrumentModel
 from stis_analysis.processing.image import ProcessingImageCollection, ProcessingImageModel
-from stis_analysis.processing.wave_constants import oiii5007_stp
+from stis_analysis.processing.wave_constants import c_kms, oiii5007_stp
 
 
 @dataclass(frozen=True)
@@ -119,6 +119,88 @@ class ProcessingResult:
                 o3_half_width_aa=o3_half_width_aa,
                 ax=ax,
             )
+
+        for ax in axes_list[n:]:
+            ax.set_visible(False)
+
+        plt.tight_layout()
+
+        if save_path is not None:
+            fig.savefig(save_path)
+
+        plt.show()
+        return axes_2d
+
+    def plot_before_after(
+        self,
+        slit_index: int,
+        recession_velocity: float,
+        rest_wavelength: float = oiii5007_stp,
+        labels: tuple[str, str] = ("before", "after"),
+        save_path: Path | str | None = None,
+    ) -> np.ndarray:
+        """処理前後のスペクトルを重ねて比較するプロットを生成する.
+
+        before と after のスペクトルを同一 Axes に重ねて描画し、
+        3 列タイルで全画像を並べる。
+
+        Parameters
+        ----------
+        slit_index : int
+            確認するスリット行のインデックス（空間方向）
+        recession_velocity : float
+            銀河の後退速度 [km/s]
+        rest_wavelength : float, optional
+            速度 v=0 の基準静止波長 [Å]。デフォルト: oiii5007_stp
+        labels : tuple[str, str], optional
+            凡例ラベル（before, after の順）
+        save_path : Path | str | None, optional
+            保存先パス。None の場合は保存しない。
+
+        Returns
+        -------
+        np.ndarray
+            Axes の 2D 配列（shape: (nrows, ncols)）
+        """
+        n = len(self.before.images)
+        if n == 0:
+            raise ValueError("画像が存在しません。")
+
+        ncols = min(n, 3)
+        nrows = math.ceil(n / ncols)
+
+        z = recession_velocity / c_kms
+        lambda_ref = rest_wavelength * (1.0 + z)
+
+        fig, axes_2d = plt.subplots(
+            nrows, ncols,
+            figsize=(5 * ncols, 4 * nrows),
+            squeeze=False,
+        )
+        axes_list = list(axes_2d.flat)
+
+        for ax, img_before, img_after in zip(
+            axes_list, self.before.images, self.after.images
+        ):
+            wl_before = img_before.sci.wavelength
+            if wl_before is not None:
+                vel_before = c_kms * (wl_before / lambda_ref - 1.0)
+                ax.plot(vel_before, img_before.sci.data[slit_index, :],
+                        color="steelblue", lw=0.8, alpha=0.8, label=labels[0])
+
+            wl_after = img_after.sci.wavelength
+            if wl_after is not None:
+                vel_after = c_kms * (wl_after / lambda_ref - 1.0)
+                ax.plot(vel_after, img_after.sci.data[slit_index, :],
+                        color="tomato", lw=0.8, alpha=0.8, label=labels[1])
+
+            ax.set_xlabel("Velocity [km/s]")
+            ax.set_ylabel("Counts")
+            ax.set_title(
+                f"{img_before.filename} (slit={slit_index}, "
+                f"v_reces={recession_velocity} km/s)"
+            )
+            ax.legend(fontsize="small")
 
         for ax in axes_list[n:]:
             ax.set_visible(False)
