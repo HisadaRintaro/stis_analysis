@@ -1,17 +1,44 @@
 [project]
 name = "stis-analysis"
 version = "0.1.0"
-description = ""
+description = "HST/STIS 分光データの宇宙線除去・処理・解析を行う統合パッケージ"
 authors = [
     {name = "HisadaRintaro",email = "rintro204@icloud.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "numpy>=1.26",
+    "astropy>=6.0",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+lacosmic = [
+    "lacosmic>=1.4.0",
+    "scipy>=1.13",
+]
+processing = [
+    "stistools>=1.4.7",
+    "scipy>=1.13",
+]
+all = [
+    "lacosmic>=1.4.0",
+    "scipy>=1.13",
+    "stistools>=1.4.7",
 ]
 
 [tool.poetry]
 packages = [{include = "stis_analysis", from = "src"}]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-cov = ">=5.0"
+lacosmic = "^1.4.0"
+scipy = "^1.17.1"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
