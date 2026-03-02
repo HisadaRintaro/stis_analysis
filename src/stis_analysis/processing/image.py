@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Self
+from typing import Self, cast
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -187,9 +187,10 @@ class ProcessingImageModel(ImageModel):
         lambda_5007_obs = oiii5007_stp * (1.0 + z)
 
         # CDELT1 または CD1_1 からピクセルスケールを取得
-        cdelt1 = self.sci.header.get("CDELT1", self.sci.header.get("CD1_1"))
-        if cdelt1 is None or cdelt1 == 0:
+        _cdelt1_raw = self.sci.header.get("CDELT1", self.sci.header.get("CD1_1"))
+        if _cdelt1_raw is None or _cdelt1_raw == 0:
             raise ValueError("SCI ヘッダーに CDELT1 / CD1_1 がありません。")
+        cdelt1 = float(_cdelt1_raw)  # type: ignore[arg-type]
 
         delta_lam = lambda_5007_obs - lambda_4959_obs  # [Å]
         delta_pix = int(round(delta_lam / cdelt1))
@@ -288,11 +289,10 @@ class ProcessingImageModel(ImageModel):
         )
 
         # --- WCS 更新 ---
-        old_crval1 = float(self.sci.header.get("CRVAL1", wavelength[0]))
-        old_cdelt1 = float(
-            self.sci.header.get("CDELT1", self.sci.header.get("CD1_1", 1.0))
-        )
-        old_crpix1 = float(self.sci.header.get("CRPIX1", 1.0))
+        old_crval1 = float(self.sci.header.get("CRVAL1", wavelength[0]))  # type: ignore[arg-type]
+        _cdelt1_raw = self.sci.header.get("CDELT1", self.sci.header.get("CD1_1", 1.0))
+        old_cdelt1 = float(_cdelt1_raw)  # type: ignore[arg-type]
+        old_crpix1 = float(self.sci.header.get("CRPIX1", 1.0))  # type: ignore[arg-type]
         new_crval1 = old_crval1 + old_cdelt1 * (start_idx - (old_crpix1 - 1.0))
 
         new_sci_header = self.sci.header.copy()
@@ -485,7 +485,7 @@ class ProcessingImageCollection(ImageCollection):
             ProcessingImageModel.from_reader(reader, dq_flags=dq_flags)
             for reader in readers
         ]
-        return cls(images=images, **kwargs)
+        return cls(images=images, **kwargs)  # type: ignore[arg-type]
 
     def subtract_continuum(
         self,
@@ -496,7 +496,7 @@ class ProcessingImageCollection(ImageCollection):
     ) -> "ProcessingImageCollection":
         """全画像に連続光差し引きを一括適用する."""
         images = [
-            image.subtract_continuum(
+            cast(ProcessingImageModel, image).subtract_continuum(
                 continuum_windows_kms=continuum_windows_kms,
                 recession_velocity=recession_velocity,
                 rest_wavelength=rest_wavelength,
@@ -504,7 +504,7 @@ class ProcessingImageCollection(ImageCollection):
             )
             for image in self.images
         ]
-        return replace(self, images=images)
+        return replace(self, images=images)  # type: ignore[arg-type]
 
     def remove_o3_4959(
         self,
@@ -514,14 +514,14 @@ class ProcessingImageCollection(ImageCollection):
     ) -> "ProcessingImageCollection":
         """全画像に OIII λ4959 除去を一括適用する."""
         images = [
-            image.remove_o3_4959(
+            cast(ProcessingImageModel, image).remove_o3_4959(
                 recession_velocity=recession_velocity,
                 scale=scale,
                 half_width_aa=half_width_aa,
             )
             for image in self.images
         ]
-        return replace(self, images=images)
+        return replace(self, images=images)  # type: ignore[arg-type]
 
     def clip_velocity_range(
         self,
@@ -532,7 +532,7 @@ class ProcessingImageCollection(ImageCollection):
     ) -> "ProcessingImageCollection":
         """全画像に velocity range clipping を一括適用する."""
         images = [
-            image.clip_velocity_range(
+            cast(ProcessingImageModel, image).clip_velocity_range(
                 v_min=v_min,
                 v_max=v_max,
                 recession_velocity=recession_velocity,
@@ -540,7 +540,7 @@ class ProcessingImageCollection(ImageCollection):
             )
             for image in self.images
         ]
-        return replace(self, images=images)
+        return replace(self, images=images)  # type: ignore[arg-type]
 
     def write_fits(
         self,
