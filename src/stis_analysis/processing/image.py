@@ -67,6 +67,27 @@ class ProcessingImageModel(ImageModel):
 
     # 追加フィールドなし（lacosmic.ImageModel の全フィールドを継承）
 
+    def __repr__(self) -> str:
+        dq_mask_info = (
+            f"dq_mask_count={self.dq_mask.sum()}"
+            if self.dq_mask is not None
+            else "dq_mask=None"
+        )
+        contsub = self.primary_header.get("CONTSUB", False)
+        o3corr = self.primary_header.get("O3CORR", False)
+        vclip = self.primary_header.get("VCLIP", False)
+        return (
+            f"ProcessingImageModel(\n"
+            f"  filename={self.filename},\n"
+            f"  sci={self.sci.data.shape},\n"
+            f"  err={self.err is not None},\n"
+            f"  dq={self.dq is not None},\n"
+            f"  {dq_mask_info},\n"
+            f"  source_path={self.source_path},\n"
+            f"  contsub={contsub}, o3corr={o3corr}, vclip={vclip},\n"
+            f")"
+        )
+
     # ------------------------------------------------------------------
     # 連続光差し引き
     # ------------------------------------------------------------------
@@ -460,6 +481,17 @@ class ProcessingImageCollection(ImageCollection):
 
     lacosmic.ImageCollection を継承し、各処理を一括適用するメソッドを追加する。
     """
+
+    images: list[ProcessingImageModel]  # type: ignore[assignment]
+
+    def __repr__(self) -> str:
+        filenames = [img.filename for img in self.images]
+        return (
+            f"ProcessingImageCollection(\n"
+            f"  n_images={len(self.images)},\n"
+            f"  files={filenames},\n"
+            f")"
+        )
 
     @classmethod
     def from_readers(  # type: ignore[override]

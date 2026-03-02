@@ -38,6 +38,18 @@ class ProcessingResult:
     after: ProcessingImageCollection
     output_paths: list[Path]
 
+    def __repr__(self) -> str:
+        paths_str = "".join(f"    {p},\n" for p in self.output_paths)
+        return (
+            f"ProcessingResult(\n"
+            f"  before={len(self.before.images)} images,\n"
+            f"  after={len(self.after.images)} images,\n"
+            f"  output_paths=[\n"
+            f"{paths_str}"
+            f"  ],\n"
+            f")"
+        )
+
 
 @dataclass(frozen=True)
 class ProcessingPipeline:
@@ -88,6 +100,23 @@ class ProcessingPipeline:
     depth: int = 1
     exclude_files: tuple[str, ...] = ()
     dq_flags: int = 16
+
+    def __repr__(self) -> str:
+        windows = ", ".join(
+            f"({lo}, {hi})" for lo, hi in self.continuum_windows_kms
+        )
+        return (
+            f"ProcessingPipeline(\n"
+            f"  continuum_windows_kms=[{windows}] km/s,\n"
+            f"  continuum_degree={self.continuum_degree},\n"
+            f"  recession_velocity={self.recession_velocity} km/s,\n"
+            f"  rest_wavelength={self.rest_wavelength:.3f} Å,\n"
+            f"  v_min={self.v_min}, v_max={self.v_max} km/s,\n"
+            f"  o3_scale={self.o3_scale}, o3_half_width_aa={self.o3_half_width_aa} Å,\n"
+            f"  suffix={self.suffix!r}, depth={self.depth},\n"
+            f"  dq_flags={self.dq_flags},\n"
+            f")"
+        )
 
     def run(
         self,
