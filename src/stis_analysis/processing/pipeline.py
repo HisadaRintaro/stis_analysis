@@ -14,7 +14,7 @@ import math
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -62,9 +62,11 @@ class ProcessingResult:
         recession_velocity: float,
         rest_wavelength: float = oiii5007_stp,
         degree: int = 1,
+        which: Literal["before", "after"] = "before",
+        o3_half_width_aa: float | None = None,
         save_path: Path | str | None = None,
     ) -> np.ndarray:
-        """処理前画像の連続光フィットを 3 列タイルで確認するプロットを生成する.
+        """連続光フィットを 3 列タイルで確認するプロットを生成する.
 
         Parameters
         ----------
@@ -78,6 +80,12 @@ class ProcessingResult:
             基準静止波長 [Å]。デフォルト: oiii5007_stp
         degree : int, optional
             フィット多項式次数（デフォルト: 1）
+        which : {"before", "after"}, optional
+            プロットする画像コレクション（デフォルト: "before"）。
+            "before" は連続光差し引き前、"after" は全処理適用後。
+        o3_half_width_aa : float | None, optional
+            OIII λ4959 除去領域の半幅 [Å]。指定すると除去対象範囲を
+            シェードで表示する。None の場合は非表示（デフォルト）。
         save_path : Path | str | None, optional
             保存先パス。None の場合は保存しない。
 
@@ -86,9 +94,10 @@ class ProcessingResult:
         np.ndarray
             Axes の 2D 配列（shape: (nrows, ncols)）
         """
-        n = len(self.before.images)
+        collection = self.before if which == "before" else self.after
+        n = len(collection.images)
         if n == 0:
-            raise ValueError("処理前画像が存在しません。")
+            raise ValueError(f"'{which}' の画像が存在しません。")
 
         ncols = min(n, 3)
         nrows = math.ceil(n / ncols)
@@ -100,13 +109,14 @@ class ProcessingResult:
         )
         axes_list = list(axes_2d.flat)
 
-        for ax, image in zip(axes_list, self.before.images):
+        for ax, image in zip(axes_list, collection.images):
             cast(ProcessingImageModel, image).plot_continuum_fit(
                 slit_index=slit_index,
                 continuum_windows_kms=continuum_windows_kms,
                 recession_velocity=recession_velocity,
                 rest_wavelength=rest_wavelength,
                 degree=degree,
+                o3_half_width_aa=o3_half_width_aa,
                 ax=ax,
             )
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Self, cast
+from typing import Literal, Self, cast
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -361,6 +361,7 @@ class ProcessingImageModel(ImageModel):
         recession_velocity: float,
         rest_wavelength: float = oiii5007_stp,
         degree: int = 1,
+        o3_half_width_aa: float | None = None,
         ax=None,
     ) -> plt.Axes:  # pyright: ignore
         """連続光フィットウィンドウとフィット結果を可視化する.
@@ -380,6 +381,9 @@ class ProcessingImageModel(ImageModel):
             基準静止波長 [Å]。デフォルト: oiii5007_stp
         degree : int, optional
             多項式次数（デフォルト: 1）
+        o3_half_width_aa : float | None, optional
+            OIII λ4959 除去領域の半幅 [Å]。指定すると除去対象範囲を
+            シェードで表示する。None の場合は非表示（デフォルト）。
         ax : matplotlib.axes.Axes, optional
             描画先 Axes。None の場合は新規作成。
 
@@ -406,7 +410,7 @@ class ProcessingImageModel(ImageModel):
         for k, (v_lo, v_hi) in enumerate(continuum_windows_kms):
             cont_mask |= (velocity >= v_lo) & (velocity <= v_hi)
             ax.axvspan(v_lo, v_hi, alpha=0.2, color="orange",
-                       label=f"cont window {k}" if k == 0 else None)
+                       label="cont window" if k == 0 else None)
 
         # 連続光フィット
         pixel_indices = np.arange(len(wavelength), dtype=float)
@@ -420,13 +424,22 @@ class ProcessingImageModel(ImageModel):
 
         # OIII λ4959 と λ5007 の位置をマーク
         z = recession_velocity / c_kms
+        lambda_ref = rest_wavelength * (1.0 + z)
         for lam, label in [
             (oiii4959_stp, "OIII 4959"),
             (oiii5007_stp, "OIII 5007"),
         ]:
             lam_obs = lam * (1.0 + z)
-            v_line = c_kms * (lam_obs / (rest_wavelength * (1.0 + z)) - 1.0)
+            v_line = c_kms * (lam_obs / lambda_ref - 1.0)
             ax.axvline(v_line, color="gray", linestyle=":", lw=1.0, label=label)
+
+        # OIII λ4959 除去領域をシェードで表示
+        if o3_half_width_aa is not None:
+            lam_4959_obs = oiii4959_stp * (1.0 + z)
+            v_4959_lo = c_kms * ((lam_4959_obs - o3_half_width_aa) / lambda_ref - 1.0)
+            v_4959_hi = c_kms * ((lam_4959_obs + o3_half_width_aa) / lambda_ref - 1.0)
+            ax.axvspan(v_4959_lo, v_4959_hi, alpha=0.15, color="purple",
+                       label=f"OIII 4959 removal (±{o3_half_width_aa:.0f} Å)")
 
         ax.set_xlabel("Velocity [km/s]")
         ax.set_ylabel("Counts")
