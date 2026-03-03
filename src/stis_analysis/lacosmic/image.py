@@ -902,26 +902,54 @@ class ImageCollection:
                 f"画像数が一致しません: self={len(self)}, other={len(other)}"
             )
 
-        fig = plt.figure(figsize=(16, 8))
-        gs = fig.add_gridspec(2, 4, width_ratios=[1, 1, 1, 1])
+        fig, gs, spec_axes = self._create_comparison_figure()
 
-        spec_axes = np.empty((2, 3), dtype=object)
-        for row in range(2):
-            for col in range(3):
-                spec_axes[row, col] = fig.add_subplot(gs[row, col])
-
+        # --- スペクトル比較プロット ---
         for ax, img_self, img_other in zip(spec_axes.flat, self.images, other.images):
             img_self.plot_spectrum(slit_index, ax=ax, label=labels[0], **kwargs)
             img_other.plot_spectrum(slit_index, ax=ax, label=labels[1], **kwargs)
             ax.legend(fontsize="small")
-
         for ax in spec_axes.flat[len(self.images):]:
             ax.set_visible(False)
 
+        # --- 右側イメージパネル ---
         ax_image = fig.add_subplot(gs[:, 3])
         source = other if image_source == "other" else self
         display_image = source.images[0]
         display_image.imshow(ax=ax_image, **(imshow_kwargs or {}))
+        self._configure_image_panel(
+            ax_image, display_image, slit_index, area,
+            x_center, y_center, half_width,
+        )
+
+        self._add_param_text(fig)
+
+        if save_path:
+            self.save_fig(spec_axes, save_path, title)
+
+        return spec_axes
+
+    def _create_comparison_figure(self):
+        """比較プロット用の Figure / GridSpec / Axes(2×3) を作成する."""
+        fig = plt.figure(figsize=(16, 8))
+        gs = fig.add_gridspec(2, 4, width_ratios=[1, 1, 1, 1])
+        spec_axes = np.empty((2, 3), dtype=object)
+        for row in range(2):
+            for col in range(3):
+                spec_axes[row, col] = fig.add_subplot(gs[row, col])
+        return fig, gs, spec_axes
+
+    @staticmethod
+    def _configure_image_panel(
+        ax_image,
+        display_image: "ImageModel",
+        slit_index: int,
+        area: bool = False,
+        x_center: int = 330,
+        y_center: int = 550,
+        half_width: int = 100,
+    ) -> None:
+        """右側イメージパネルのラベル・slit 線・表示範囲を設定する."""
         ax_image.axhline(
             y=slit_index, color="red", linestyle="--", linewidth=1.5,
             label=f"slit index = {slit_index}",
@@ -934,6 +962,8 @@ class ImageCollection:
             ax_image.set_xlim(x_center - half_width, x_center + half_width)
             ax_image.set_ylim(y_center - half_width, y_center + half_width)
 
+    def _add_param_text(self, fig) -> None:
+        """LA-Cosmic パラメータのテキストを Figure 下部に追加しレイアウト調整する."""
         param_text = (
             f"contrast={self.contrast}  "
             f"cr_threshold={self.cr_threshold}  "
@@ -942,11 +972,6 @@ class ImageCollection:
         )
         fig.text(0.5, 0.01, param_text, ha="center", va="bottom", fontsize=8)
         fig.tight_layout(rect=(0.0, 0.05, 1.0, 0.93))
-
-        if save_path:
-            self.save_fig(spec_axes, save_path, title)
-
-        return spec_axes
 
     def __len__(self) -> int:
         return len(self.images)
