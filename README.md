@@ -77,10 +77,18 @@ stis_analysis/
 - [x] `processing/` のテスト整備（`ProcessingImageModel` のユニットテスト）
 - [ ] `ProcessingPipeline` の統合テスト整備
 
-#### 未解決の課題
-- **lacosmic 輝線保護**: LA-Cosmic の CR 検出時に輝線ピクセルが消されてしまう問題。
-  `mask` に輝線保護マスクを渡すアプローチを試みたが未解決。
-  実装途中のコードは `wip/emission-line-protection` ブランチに保存。
+#### 未解決の課題・開発の後退
+
+- **lacosmic 輝線保護** ([#10](https://github.com/HisadaRintaro/stis_analysis/issues/10)) ⚠️ 開発中断・差し戻し済み
+  - **問題**: LA-Cosmic が輝線（OIII λ5007 等）の高輝度ピクセルを宇宙線として誤検出し、
+    輝線フラックスが削られてしまう。
+  - **試みたアプローチ**: `build_emission_mask()` で空間方向の連続性（MAD σ-clip +
+    `min_spatial_extent` 行以上の連続区間）により輝線を検出し、`remove_cosmics` の
+    `mask` 引数に渡すことで CR 検出から保護する実装を試みた。
+  - **結果**: 保護マスクを渡しても輝線フラックスの損失が十分に抑えられず、解決策が
+    見つからなかったため中断。
+  - **現状**: 実装途中のコードは `wip/emission-line-protection` ブランチに保存し、
+    `main` は本機能追加前のコミットに差し戻した。
 
 ### Phase 3: Stage 3 開発
 - [ ] `analysis/` サブパッケージの設計・実装
