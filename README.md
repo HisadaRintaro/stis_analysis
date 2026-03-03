@@ -31,16 +31,22 @@ stis_analysis/
 │   │   ├── __init__.py
 │   │   ├── fits_reader.py        ← STISFitsReader, ReaderCollection
 │   │   ├── instrument.py         ← InstrumentModel
-│   │   └── image.py              ← ImageUnit (将来的に BaseImageModel)
+│   │   └── image.py              ← ImageUnit
 │   │
-│   ├── lacosmic/                 ← Stage 1 (stis_la_cosmic から移植)
+│   ├── lacosmic/                 ← Stage 1
 │   │   ├── __init__.py
 │   │   ├── image.py              ← ImageModel, ImageCollection
 │   │   └── pipeline.py           ← LaCosmicPipeline, PipelineResult
 │   │
-│   └── processing/               ← Stage 2 (新規開発)
+│   └── processing/               ← Stage 2
 │       ├── __init__.py
-│       └── (今後設計)
+│       ├── image.py              ← ProcessingImageModel, ProcessingImageCollection
+│       ├── pipeline.py           ← ProcessingPipeline, ProcessingResult
+│       └── wave_constants.py     ← 波長定数 (OIII λ4959/λ5007 等)
+│
+├── scripts/
+│   ├── run_lacosmic.py           ← Stage 1 実行スクリプト
+│   └── run_processing.py         ← Stage 2 実行スクリプト
 │
 ├── tests/
 │   ├── test_core/
@@ -55,25 +61,31 @@ stis_analysis/
 
 ## 開発ロードマップ
 
-### Phase 1: 基盤構築 (現在)
-- [ ] `core/` の実装 — `STISFitsReader`, `ReaderCollection`, `InstrumentModel`, `ImageUnit`
-- [ ] `lacosmic/` の移植 — `stis_la_cosmic` から import パスを書き換えて移行
-- [ ] `lacosmic/` のテスト整備
+### Phase 1: 基盤構築 ✅ 完了
+- [x] `core/` の実装 — `STISFitsReader`, `ReaderCollection`, `InstrumentModel`, `ImageUnit`
+- [x] `lacosmic/` の移植 — `stis_la_cosmic` から import パスを書き換えて移行
+- [x] `lacosmic/` のテスト整備
 
-### Phase 2: Stage 2 開発
-- [ ] `processing/` サブパッケージの設計・実装
-  - stistools pipeline 連携
-  - 連続光差し引き
-  - OIII λ4959 除去
-  - ±2500 km/s 切り取り
-  - 6スリット → 3D Cube 結合
-  - 空間補間
-- [ ] `processing/` のテスト整備
+### Phase 2: Stage 2 開発 🔄 進行中
+- [x] `processing/` サブパッケージの設計・実装
+  - [x] stistools pipeline 連携 (`ProcessingPipeline._run_x2d_batch`)
+  - [x] 連続光差し引き (`ProcessingImageModel.subtract_continuum`)
+  - [x] OIII λ4959 除去 (`ProcessingImageModel.remove_o3_4959`)
+  - [x] ±2500 km/s 切り取り (`ProcessingImageModel.clip_velocity_range`)
+  - [ ] 6スリット → 3D Cube 結合
+  - [ ] 空間補間
+- [x] `processing/` のテスト整備（`ProcessingImageModel` のユニットテスト）
+- [ ] `ProcessingPipeline` の統合テスト整備
+
+#### 未解決の課題
+- **lacosmic 輝線保護**: LA-Cosmic の CR 検出時に輝線ピクセルが消されてしまう問題。
+  `mask` に輝線保護マスクを渡すアプローチを試みたが未解決。
+  実装途中のコードは `wip/emission-line-protection` ブランチに保存。
 
 ### Phase 3: Stage 3 開発
 - [ ] `analysis/` サブパッケージの設計・実装
-  - Velocity Map 生成
-  - 追加解析処理
+  - [ ] Velocity Map 生成
+  - [ ] 追加解析処理
 - [ ] `analysis/` のテスト整備
 
 ### Phase 4: `BaseImageModel` 抽出 (将来)
