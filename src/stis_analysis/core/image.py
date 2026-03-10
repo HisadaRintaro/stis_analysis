@@ -12,11 +12,14 @@ ImageUnit は spectrum_package と stis_la_cosmic の両実装をマージした
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 import numpy as np
 from astropy.io import fits  # type: ignore
+from scipy.sparse.csgraph import laplacian
+from matplotlib.colors import Normalize, AsinhNorm
+
 
 
 @dataclass(frozen=True)
@@ -82,3 +85,23 @@ class ImageUnit:
         """
         data = self.data.astype(np.uint8) if self.data.dtype == bool else self.data
         return fits.ImageHDU(data=data, header=self.header)
+
+    def convert_to_laplacian(self) -> ImageUnit:
+        """画像データをラプラシアン行列に変換する."""
+        shape = self.data.shape
+        size = min(shape[0], shape[1])
+        start_x = (shape[0] - size) // 2
+        start_y = (shape[1] - size) // 2
+        data = self.data[start_x: start_x + size, start_y: start_y + size]
+        return replace(self, data=laplacian(data), cmap="coolwarm", )
+
+    def imshow(self, ax=None, **kwargs):
+        import matplotlib.pyplot as plt
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        cs = ax.imshow(self.data, **kwargs)
+        plt.colorbar(cs, ax=ax)
+        ax.set_xlabel(r'wavelength [$\AA$]')
+        ax.set_ylabel('spatial [pixel]')
+        return ax

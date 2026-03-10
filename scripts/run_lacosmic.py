@@ -8,6 +8,7 @@ ipython での実行:
 """
 
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 from stis_analysis.core.fits_reader import ReaderCollection
 from stis_analysis.core.instrument import InstrumentModel
@@ -17,8 +18,8 @@ from stis_analysis.lacosmic import ImageCollection
 # 設定（必要に応じて変更）
 # ------------------------------------------------------------------ #
 
-HST_DIR = Path("../../HST")            # _flt.fits があるルートディレクトリ
-OUTPUT_DIR = Path("../../output/lac")  # _lac.fits の出力先
+HST_DIR = Path("../data/HST")            # _flt.fits があるルートディレクトリ
+OUTPUT_DIR = Path("../data/output/lac")  # _lac.fits の出力先
 
 SUFFIX = "_crj"
 DEPTH = 1  # HST/o56502010/o56502010_crj.fits の 1 階層下
@@ -56,11 +57,21 @@ readers = ReaderCollection.from_paths(instrument.path_list)
 collection = ImageCollection.from_readers(readers, dq_flags=DQ_FLAGS, **LA_COSMIC_PARAMS)
 
 # --- LA-Cosmic 適用 ---
-lac_collection = collection.remove_cosmic_ray()
+#lac_collection = collection.remove_cosmic_ray()
 
 # --- _lac.fits として書き出し ---
-output_paths = lac_collection.write_fits(output_dir=OUTPUT_DIR, overwrite=True)
+#output_paths = lac_collection.write_fits(output_dir=OUTPUT_DIR, overwrite=True)
 
-print(f"\nOutput ({len(output_paths)} files):")
-for p in output_paths:
-    print(f"  {p}")
+#print(f"\nOutput ({len(output_paths)} files):")
+#for p in output_paths:
+#    print(f"  {p}")
+
+
+# --- ラプラシアン ---
+
+sci_image = collection[3].sci
+lap_sci_image = sci_image.convert_to_laplacian()
+
+plt.imshow(lap_sci_image.data, cmap="viridis")
+plt.colorbar()
+plt.show()

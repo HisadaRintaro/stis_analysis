@@ -11,6 +11,7 @@ STIS FITS ファイルから読み込んだ画像データを管理し、
 - ImageCollection.imshow_mask(): dq_mask=None の場合の fallback を追加 (バグ修正)
 """
 
+import math
 from typing import Literal
 import warnings
 from dataclasses import dataclass, replace
@@ -24,6 +25,7 @@ from scipy.ndimage import median_filter  # type: ignore
 
 from stis_analysis.core.image import ImageUnit
 from stis_analysis.core.fits_reader import ReaderCollection, STISFitsReader
+from stis_analysis.core.wave_constants import c_kms, oiii5007_stp
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,14 @@ class ImageModel:
         except KeyError:
             dq = None
             dq_mask = None
+
+        # LACOSMIC 拡張（HDU 4）があれば読み込む
+        cr_mask = None
+        for hdu_idx, hdr in reader.headers.items():
+            if hdr.get("EXTNAME") == "LACOSMIC" and hdu_idx in reader.data:
+                cr_mask = ImageUnit(data=reader.data[hdu_idx], header=hdr)
+                break
+
         return cls(
             primary_header=reader.header(0),
             sci=ImageUnit(
@@ -132,6 +142,7 @@ class ImageModel:
             err=err,
             dq=dq,
             dq_mask=dq_mask,
+            cr_mask=cr_mask,
             source_path=reader.filename.parent,
             dq_flags=dq_flags,
         )
@@ -421,6 +432,98 @@ class ImageModel:
             hdu_list.append(self.cr_mask.to_hdu())
         fits.HDUList(hdu_list).writeto(output_path, overwrite=overwrite)
         return output_path
+
+    def plot_lacosmic_residual(
+        self,
+        other: "ImageModel",
+        slit_index: int,
+        recession_velocity: float,
+        rest_wavelength: float = oiii5007_stp,
+        v_range: tuple[float, float] = (-3000.0, 3000.0),
+        labels: tuple[str, str] = ("before", "after (LA-Cosmic)"),
+        axes=None,
+    ) -> tuple:  # pyright: ignore
+        """LA-Cosmic 除去残差スペクトルを 2 段プロットで確認する.
+
+        上段: self (before) と other (after) スペクトルを重ね描き。
+        下段: 残差 = before − after（LA-Cosmic が除去した分）。
+              CR マスクされたピクセルを赤い点でマーク。
+
+        Parameters
+        ----------
+        other : ImageModel
+            LA-Cosmic 処理後の画像（after）
+        slit_index : int
+            確認するスリット行のインデックス
+        recession_velocity : float
+            銀河の後退速度 [km/s]
+        rest_wavelength : float, optional
+            速度 v=0 の基準静止波長 [Å]（デフォルト: oiii5007_stp）
+        v_range : tuple[float, float], optional
+            速度表示範囲 [km/s]（デフォルト: (-3000, 3000)）
+        labels : tuple[str, str], optional
+            凡例ラベル（before, after の順）
+        axes : tuple | None, optional
+            (ax_top, ax_bottom) の Axes タプル。None の場合は新規作成。
+
+        Returns
+        -------
+        tuple
+            (ax_top, ax_bottom) の Axes タプル
+        """
+        z = recession_velocity / c_kms
+        lambda_ref = rest_wavelength * (1.0 + z)
+
+        wl = self.sci.wavelength
+        if wl is None:
+            raise ValueError("波長情報が存在しません（WCS が設定されていません）")
+
+        vel = c_kms * (wl / lambda_ref - 1.0)
+        spec_before = self.sci.data[slit_index, :]
+        spec_after = other.sci.data[slit_index, :]
+        residual = spec_before - spec_after
+
+        v_lo, v_hi = v_range
+        mask_v = (vel >= v_lo) & (vel <= v_hi)
+
+        cr_row = (
+            other.cr_mask.data[slit_index, :].astype(bool)
+            if other.cr_mask is not None
+            else np.zeros(len(spec_before), dtype=bool)
+        )
+
+        if axes is None:
+            _, (ax_top, ax_bottom) = plt.subplots(
+                2, 1, figsize=(8, 6), sharex=True,
+                gridspec_kw={"height_ratios": [2, 1]},
+            )
+        else:
+            ax_top, ax_bottom = axes
+
+        # 上段: before vs after
+        ax_top.plot(vel[mask_v], spec_before[mask_v],
+                    color="steelblue", lw=0.8, alpha=0.9, label=labels[0])
+        ax_top.plot(vel[mask_v], spec_after[mask_v],
+                    color="tomato", lw=0.8, alpha=0.9, label=labels[1])
+        ax_top.set_ylabel("Counts")
+        ax_top.set_title(f"{self.filename}  slit={slit_index}")
+        ax_top.legend(fontsize="small")
+
+        # 下段: 残差
+        ax_bottom.plot(vel[mask_v], residual[mask_v],
+                       color="dimgray", lw=0.8, label="residual (before − after)")
+        cr_in_range = cr_row & mask_v
+        if cr_in_range.any():
+            ax_bottom.scatter(
+                vel[cr_in_range], residual[cr_in_range],
+                color="red", s=12, zorder=5, label="CR-flagged pixels",
+            )
+        ax_bottom.axhline(0, color="k", lw=0.5, ls="--")
+        ax_bottom.set_xlabel("Velocity [km/s]")
+        ax_bottom.set_ylabel("Residual")
+        ax_bottom.legend(fontsize="small")
+
+        return ax_top, ax_bottom
 
     def plot_spectrum(
         self,
@@ -972,6 +1075,91 @@ class ImageCollection:
         )
         fig.text(0.5, 0.01, param_text, ha="center", va="bottom", fontsize=8)
         fig.tight_layout(rect=(0.0, 0.05, 1.0, 0.93))
+
+    def plot_lacosmic_residual(
+        self,
+        other: "ImageCollection",
+        slit_index: int,
+        recession_velocity: float,
+        rest_wavelength: float = oiii5007_stp,
+        v_range: tuple[float, float] = (-3000.0, 3000.0),
+        labels: tuple[str, str] = ("before", "after (LA-Cosmic)"),
+        save_path: Path | str | None = None,
+    ) -> np.ndarray:
+        """LA-Cosmic 残差を全画像で 2 段 × n_images タイル表示する.
+
+        各列が 1 枚の画像に対応し、上段行にスペクトル比較、
+        下段行に残差スペクトルを配置する。
+
+        Parameters
+        ----------
+        other : ImageCollection
+            LA-Cosmic 処理後のコレクション（after）
+        slit_index : int
+            確認するスリット行のインデックス
+        recession_velocity : float
+            銀河の後退速度 [km/s]
+        rest_wavelength : float, optional
+            速度 v=0 の基準静止波長 [Å]（デフォルト: oiii5007_stp）
+        v_range : tuple[float, float], optional
+            速度表示範囲 [km/s]（デフォルト: (-3000, 3000)）
+        labels : tuple[str, str], optional
+            凡例ラベル（before, after の順）
+        save_path : Path | str | None, optional
+            保存先パス。None の場合は保存しない。
+
+        Returns
+        -------
+        np.ndarray
+            Axes の 2D 配列（shape: (2 * nrows, ncols)）
+        """
+        n = len(self.images)
+        if n == 0:
+            raise ValueError("画像が存在しません。")
+        if len(other.images) != n:
+            raise ValueError(
+                f"画像数が一致しません: self={n}, other={len(other.images)}"
+            )
+
+        ncols = min(n, 7)
+        nrows = math.ceil(n / ncols)
+        total_rows = 2 * nrows
+
+        fig, axes_2d = plt.subplots(
+            total_rows, ncols,
+            figsize=(2.5 * ncols, 2.5 * total_rows),
+            squeeze=False,
+        )
+
+        for i, (img_before, img_after) in enumerate(zip(self.images, other.images)):
+            row_base = (i // ncols) * 2
+            col = i % ncols
+            ax_top = axes_2d[row_base, col]
+            ax_bottom = axes_2d[row_base + 1, col]
+            img_before.plot_lacosmic_residual(
+                img_after,
+                slit_index=slit_index,
+                recession_velocity=recession_velocity,
+                rest_wavelength=rest_wavelength,
+                v_range=v_range,
+                labels=labels,
+                axes=(ax_top, ax_bottom),
+            )
+
+        # 余ったサブプロットを非表示
+        for i in range(n, nrows * ncols):
+            row_base = (i // ncols) * 2
+            col = i % ncols
+            axes_2d[row_base, col].set_visible(False)
+            axes_2d[row_base + 1, col].set_visible(False)
+
+        plt.tight_layout()
+
+        if save_path is not None:
+            fig.savefig(save_path)
+
+        plt.show()
+        return axes_2d
 
     def __len__(self) -> int:
         return len(self.images)
