@@ -9,9 +9,9 @@ ipython での実行:
 
 from pathlib import Path
 import matplotlib.pyplot as plt
+from astropy.io import fits
 
-from stis_analysis.core.fits_reader import ReaderCollection
-from stis_analysis.core.instrument import InstrumentModel
+from stis_analysis.core import InstrumentModel, ReaderCollection, ImageUnit
 from stis_analysis.lacosmic import ImageCollection
 
 # ------------------------------------------------------------------ #
@@ -69,9 +69,20 @@ collection = ImageCollection.from_readers(readers, dq_flags=DQ_FLAGS, **LA_COSMI
 
 # --- ラプラシアン ---
 
-sci_image = collection[3].sci
+from matplotlib.colors import AsinhNorm
+sci_image = collection[0].sci
 lap_sci_image = sci_image.convert_to_laplacian()
+lap_sci_image.imshow(cmap="coolwarm", norm=AsinhNorm())
 
-plt.imshow(lap_sci_image.data, cmap="viridis")
-plt.colorbar()
-plt.show()
+
+# ---　lacosmic image sample ---
+
+from lacosmic.utils import make_cosmic_rays, make_gaussian_sources
+shape = (512, 512)
+data, error = make_gaussian_sources(shape, seed=0)
+cr_img = make_cosmic_rays(shape, n_cosmics=200, seed=0)
+data2 = data + cr_img  
+
+sample_image = ImageUnit(data=data2, header=fits.Header())
+lap_sample_image = sample_image.convert_to_laplacian()
+lap_sample_image.imshow(cmap="coolwarm", norm=AsinhNorm())

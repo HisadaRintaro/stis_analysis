@@ -18,7 +18,6 @@ from typing import cast
 import numpy as np
 from astropy.io import fits  # type: ignore
 from scipy.sparse.csgraph import laplacian
-from matplotlib.colors import Normalize, AsinhNorm
 
 
 
@@ -93,14 +92,20 @@ class ImageUnit:
         start_x = (shape[0] - size) // 2
         start_y = (shape[1] - size) // 2
         data = self.data[start_x: start_x + size, start_y: start_y + size]
-        return replace(self, data=laplacian(data), cmap="coolwarm", )
+        return replace(self, data=laplacian(data))
 
     def imshow(self, ax=None, **kwargs):
         import matplotlib.pyplot as plt
         if ax is None:
             fig, ax = plt.subplots()
-
-        cs = ax.imshow(self.data, **kwargs)
+        
+        wavelength = self.wavelength
+        if type(wavelength) != type(None):
+            wavelength = cast(np.ndarray, wavelength)
+            extent = (wavelength[0], wavelength[-1], 0, self.naxis1)
+        else:
+            extent = None
+        cs = ax.imshow(self.data, **kwargs, extent = extent)
         plt.colorbar(cs, ax=ax)
         ax.set_xlabel(r'wavelength [$\AA$]')
         ax.set_ylabel('spatial [pixel]')

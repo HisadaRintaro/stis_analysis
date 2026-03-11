@@ -214,6 +214,24 @@ class ImageModel:
             dq_mask=combined_mask,
         )
 
+    @property
+    def gain(self) -> float:
+        """ゲイン [e-/ADU]（Primary Header の ATODGAIN）."""
+        val = self.primary_header.get("ATODGAIN")
+        if val is None:
+            warnings.warn(f"{self.filename}: ATODGAIN not found in header, using 1.0")
+            return 1.0
+        return float(val)  # type: ignore[arg-type]
+
+    @property
+    def read_noise(self) -> float:
+        """リードノイズ [e-]（Primary Header の READNSE）."""
+        val = self.primary_header.get("READNSE")
+        if val is None:
+            warnings.warn(f"{self.filename}: READNSE not found in header, using 2.5")
+            return 2.5
+        return float(val)  # type: ignore[arg-type]
+
     def remove_cosmic_ray(
         self,
         contrast: float = 5.0,
@@ -259,6 +277,8 @@ class ImageModel:
             neighbor_threshold,
             error=error * np.ones(self.shape) if error is not None else None,
             mask=preprocessed.dq_mask,
+            effective_gain=self.gain,
+            readnoise=self.read_noise,
             **kwargs,
         )
 
