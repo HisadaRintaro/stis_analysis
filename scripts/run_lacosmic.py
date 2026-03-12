@@ -30,7 +30,6 @@ LA_COSMIC_PARAMS = dict(
     contrast=5.0,
     cr_threshold=5.0,
     neighbor_threshold=5.0,
-    error=5.0,
 )
 
 # 除外したいファイルの stem を列挙（不要なら空のまま）
@@ -57,7 +56,7 @@ readers = ReaderCollection.from_paths(instrument.path_list)
 collection = ImageCollection.from_readers(readers, dq_flags=DQ_FLAGS, **LA_COSMIC_PARAMS)
 
 # --- LA-Cosmic 適用 ---
-#lac_collection = collection.remove_cosmic_ray()
+lac_collection = collection.remove_cosmic_ray(maxiter=1)
 
 # --- _lac.fits として書き出し ---
 #output_paths = lac_collection.write_fits(output_dir=OUTPUT_DIR, overwrite=True)
@@ -66,15 +65,6 @@ collection = ImageCollection.from_readers(readers, dq_flags=DQ_FLAGS, **LA_COSMI
 #for p in output_paths:
 #    print(f"  {p}")
 
-
-# --- ラプラシアン ---
-
-from matplotlib.colors import AsinhNorm
-sci_image = collection[0].sci
-lap_sci_image = sci_image.convert_to_laplacian()
-lap_sci_image.imshow(cmap="coolwarm", norm=AsinhNorm())
-
-
 # ---　lacosmic image sample ---
 
 from lacosmic.utils import make_cosmic_rays, make_gaussian_sources
@@ -82,7 +72,3 @@ shape = (512, 512)
 data, error = make_gaussian_sources(shape, seed=0)
 cr_img = make_cosmic_rays(shape, n_cosmics=200, seed=0)
 data2 = data + cr_img  
-
-sample_image = ImageUnit(data=data2, header=fits.Header())
-lap_sample_image = sample_image.convert_to_laplacian()
-lap_sample_image.imshow(cmap="coolwarm", norm=AsinhNorm())

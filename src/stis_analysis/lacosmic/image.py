@@ -84,6 +84,8 @@ class ImageModel:
             f"  source_path={self.source_path}\n"
             f"  dq_flags={self.dq_flags}\n"
             f"  {dq_mask_info},\n"
+            f"  gain={self.gain}\n"
+            f"  read_noise={self.read_noise}\n"
             f")"
         )
 
@@ -237,7 +239,6 @@ class ImageModel:
         contrast: float = 5.0,
         cr_threshold: float = 5,
         neighbor_threshold: float = 5,
-        error: float | None = 5,
         mask_negative: bool = True,
         **kwargs,
     ) -> Self:
@@ -255,8 +256,6 @@ class ImageModel:
             宇宙線検出のシグマクリッピング閾値（デフォルト: 5）
         neighbor_threshold : float, optional
             近傍ピクセルの検出閾値（デフォルト: 5）
-        error : float | None, optional
-            誤差配列のスケール係数（デフォルト: 5）
         mask_negative : bool, optional
             True の場合、負の値を持つピクセルもマスク対象にする（デフォルト: True）
         **kwargs
@@ -275,7 +274,6 @@ class ImageModel:
             contrast,
             cr_threshold,
             neighbor_threshold,
-            error=error * np.ones(self.shape) if error is not None else None,
             mask=preprocessed.dq_mask,
             effective_gain=self.gain,
             readnoise=self.read_noise,
@@ -696,15 +694,12 @@ class ImageCollection:
         宇宙線検出のシグマクリッピング閾値（デフォルト: 5）
     neighbor_threshold : float
         近傍ピクセルの検出閾値（デフォルト: 5）
-    error : float
-        誤差配列のスケール係数（デフォルト: 5）
     """
 
     images: list[ImageModel]
     contrast: float = 5.0
     cr_threshold: float = 5
     neighbor_threshold: float = 5
-    error: float = 5
 
     def __repr__(self) -> str:
         return (
@@ -712,7 +707,6 @@ class ImageCollection:
             + f"contrast={self.contrast}, \n"
             + f"cr_threshold={self.cr_threshold}, \n"
             + f"neighbor_threshold={self.neighbor_threshold}, \n"
-            + f"error={self.error})\n"
         )
 
     @classmethod
@@ -723,7 +717,6 @@ class ImageCollection:
         contrast: float = 5.0,
         cr_threshold: float = 5,
         neighbor_threshold: float = 5,
-        error: float = 5,
     ) -> Self:
         """ReaderCollection から ImageCollection を生成する.
 
@@ -739,8 +732,6 @@ class ImageCollection:
             宇宙線検出のシグマクリッピング閾値（デフォルト: 5）
         neighbor_threshold : float, optional
             近傍ピクセルの検出閾値（デフォルト: 5）
-        error : float, optional
-            誤差配列のスケール係数（デフォルト: 5）
 
         Returns
         -------
@@ -756,7 +747,6 @@ class ImageCollection:
             contrast=contrast,
             cr_threshold=cr_threshold,
             neighbor_threshold=neighbor_threshold,
-            error=error,
         )
 
     def interpolate_bad_pixels(self, **kwargs) -> Self:
@@ -800,7 +790,6 @@ class ImageCollection:
                 contrast=self.contrast,
                 cr_threshold=self.cr_threshold,
                 neighbor_threshold=self.neighbor_threshold,
-                error=self.error,
                 **kwargs,
             )
             for image in self.images
@@ -1090,8 +1079,7 @@ class ImageCollection:
         param_text = (
             f"contrast={self.contrast}  "
             f"cr_threshold={self.cr_threshold}  "
-            f"neighbor_threshold={self.neighbor_threshold}  "
-            f"error={self.error}"
+            f"neighbor_threshold={self.neighbor_threshold}"
         )
         fig.text(0.5, 0.01, param_text, ha="center", va="bottom", fontsize=8)
         fig.tight_layout(rect=(0.0, 0.05, 1.0, 0.93))
