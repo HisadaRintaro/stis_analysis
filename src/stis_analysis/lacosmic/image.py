@@ -840,13 +840,11 @@ class ImageCollection:
     def imshow(
         self,
         ax=None,
-        vmax=1600,
-        vmin=0,
         area: bool = False,
         x_center: int = 330,
         y_center: int = 550,
         half_width: int = 100,
-        save_path: Path | str | None = None,
+        save_dir: Path | str | None = None,
         title: str | None = None,
         **kwargs,
     ) -> plt.Axes:  # pyright: ignore
@@ -858,10 +856,6 @@ class ImageCollection:
         ----------
         ax : np.ndarray of matplotlib.axes.Axes, optional
             描画先の Axes 配列。None の場合は 2×3 グリッドを新規作成する
-        vmax : float, optional
-            カラーマップの最大値（デフォルト: 1600）
-        vmin : float, optional
-            カラーマップの最小値（デフォルト: 0）
         area : bool, optional
             True の場合、表示範囲を中心座標周辺に制限する（デフォルト: False）
         x_center : int, optional
@@ -870,8 +864,8 @@ class ImageCollection:
             表示範囲の中心 y 座標（デフォルト: 550）
         half_width : int, optional
             中心からの表示半幅（デフォルト: 100）
-        save_path : Path | str, optional
-            保存先のファイルパス
+        save_dir : Path | str, optional
+            保存先ディレクトリ。指定すると `imshow.png` として保存する
         title : str, optional
             Figure 全体のタイトル
         **kwargs
@@ -885,13 +879,14 @@ class ImageCollection:
         if ax is None:
             _, ax = plt.subplots(2, 3, figsize=(10, 8))
         for i, image in enumerate(self.images):
-            ax[i // 3, i % 3].imshow(image.sci.data, vmax=vmax, vmin=vmin, **kwargs)
+            cs = ax[i // 3, i % 3].imshow(image.sci.data, **kwargs)
             ax[i // 3, i % 3].set_title(image.filename)
             if area:
                 ax[i // 3, i % 3].set_xlim(x_center - half_width, x_center + half_width)
                 ax[i // 3, i % 3].set_ylim(y_center - half_width, y_center + half_width)
-        if save_path:
-            self.save_fig(ax, save_path, title)
+            plt.colorbar(cs)
+        if save_dir:
+            self.save_fig(ax, Path(save_dir) / "imshow.png", title)
         return ax
 
     def imshow_mask(
@@ -902,7 +897,7 @@ class ImageCollection:
         x_center: int = 330,
         y_center: int = 550,
         half_width: int = 100,
-        save_path: Path | str | None = None,
+        save_dir: Path | str | None = None,
         title: str | None = None,
         **kwargs,
     ) -> plt.Axes:  # pyright: ignore
@@ -922,8 +917,8 @@ class ImageCollection:
             表示範囲の中心 y 座標（デフォルト: 550）
         half_width : int, optional
             中心からの表示半幅（デフォルト: 100）
-        save_path : Path | str, optional
-            保存先のファイルパス
+        save_dir : Path | str, optional
+            保存先ディレクトリ。指定すると `imshow_mask_{mask_type}.png` として保存する
         title : str, optional
             Figure 全体のタイトル
         **kwargs
@@ -959,8 +954,8 @@ class ImageCollection:
             if area:
                 ax[i // 3, i % 3].set_xlim(x_center - half_width, x_center + half_width)
                 ax[i // 3, i % 3].set_ylim(y_center - half_width, y_center + half_width)
-        if save_path:
-            self.save_fig(ax, save_path, title)
+        if save_dir:
+            self.save_fig(ax, Path(save_dir) / f"imshow_mask_{mask_type}.png", title)
         return ax
 
     def plot_spectrum_comparison(
@@ -974,7 +969,7 @@ class ImageCollection:
         y_center: int = 550,
         half_width: int = 100,
         imshow_kwargs: dict | None = None,
-        save_path: Path | str | None = None,
+        save_dir: Path | str | None = None,
         title: str | None = None,
         **kwargs,
     ) -> np.ndarray:
@@ -992,8 +987,8 @@ class ImageCollection:
             右側パネルに表示する画像の選択（デフォルト: "other"）
         imshow_kwargs : dict, optional
             右側パネルの ImageModel.imshow に渡すキーワード引数
-        save_path : Path | str | None, optional
-            保存先のファイルパス
+        save_dir : Path | str | None, optional
+            保存先ディレクトリ。指定すると `spectrum_comparison_slit{slit_index}.png` として保存する
         title : str | None, optional
             Figure 全体のタイトル
         **kwargs
@@ -1036,8 +1031,8 @@ class ImageCollection:
 
         self._add_param_text(fig)
 
-        if save_path:
-            self.save_fig(spec_axes, save_path, title)
+        if save_dir:
+            self.save_fig(spec_axes, Path(save_dir) / f"spectrum_comparison_slit{slit_index}.png", title)
 
         return spec_axes
 
@@ -1092,7 +1087,7 @@ class ImageCollection:
         rest_wavelength: float = oiii5007_stp,
         v_range: tuple[float, float] = (-3000.0, 3000.0),
         labels: tuple[str, str] = ("before", "after (LA-Cosmic)"),
-        save_path: Path | str | None = None,
+        save_dir: Path | str | None = None,
     ) -> np.ndarray:
         """LA-Cosmic 残差を全画像で 2 段 × n_images タイル表示する.
 
@@ -1113,8 +1108,8 @@ class ImageCollection:
             速度表示範囲 [km/s]（デフォルト: (-3000, 3000)）
         labels : tuple[str, str], optional
             凡例ラベル（before, after の順）
-        save_path : Path | str | None, optional
-            保存先パス。None の場合は保存しない。
+        save_dir : Path | str | None, optional
+            保存先のディレクトリ。None の場合は保存しない。
 
         Returns
         -------
@@ -1163,7 +1158,11 @@ class ImageCollection:
 
         plt.tight_layout()
 
-        if save_path is not None:
+        if save_dir is not None:
+            save_path = (
+                Path(save_dir) 
+                / f"residual_figure(slit_index_{slit_index},recession_velocity_{recession_velocity}).png"
+            )
             fig.savefig(save_path)
 
         plt.show()

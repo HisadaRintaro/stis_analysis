@@ -64,7 +64,7 @@ class ProcessingResult:
         degree: int = 1,
         which: Literal["before", "after"] = "before",
         o3_half_width_aa: float | None = None,
-        save_path: Path | str | None = None,
+        save_dir: Path | str | None = None,
     ) -> np.ndarray:
         """連続光フィットを 3 列タイルで確認するプロットを生成する.
 
@@ -86,8 +86,8 @@ class ProcessingResult:
         o3_half_width_aa : float | None, optional
             OIII λ4959 除去領域の半幅 [Å]。指定すると除去対象範囲を
             シェードで表示する。None の場合は非表示（デフォルト）。
-        save_path : Path | str | None, optional
-            保存先パス。None の場合は保存しない。
+        save_dir : Path | str | None, optional
+            保存先ディレクトリ。指定すると `continuum_fit_slit{slit_index}_{which}.png` として保存する。
 
         Returns
         -------
@@ -125,8 +125,8 @@ class ProcessingResult:
 
         plt.tight_layout()
 
-        if save_path is not None:
-            fig.savefig(save_path)
+        if save_dir is not None:
+            fig.savefig(Path(save_dir) / f"continuum_fit_slit{slit_index}_{which}.png")
 
         plt.show()
         return axes_2d
@@ -137,7 +137,7 @@ class ProcessingResult:
         recession_velocity: float,
         rest_wavelength: float = oiii5007_stp,
         labels: tuple[str, str] = ("before", "after"),
-        save_path: Path | str | None = None,
+        save_dir: Path | str | None = None,
     ) -> np.ndarray:
         """処理前後のスペクトルを重ねて比較するプロットを生成する.
 
@@ -154,8 +154,8 @@ class ProcessingResult:
             速度 v=0 の基準静止波長 [Å]。デフォルト: oiii5007_stp
         labels : tuple[str, str], optional
             凡例ラベル（before, after の順）
-        save_path : Path | str | None, optional
-            保存先パス。None の場合は保存しない。
+        save_dir : Path | str | None, optional
+            保存先ディレクトリ。指定すると `before_after_slit{slit_index}.png` として保存する。
 
         Returns
         -------
@@ -207,8 +207,8 @@ class ProcessingResult:
 
         plt.tight_layout()
 
-        if save_path is not None:
-            fig.savefig(save_path)
+        if save_dir is not None:
+            fig.savefig(Path(save_dir) / f"before_after_slit{slit_index}.png")
 
         plt.show()
         return axes_2d
