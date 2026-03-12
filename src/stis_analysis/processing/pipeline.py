@@ -276,7 +276,8 @@ class ProcessingPipeline:
             f"  rest_wavelength={self.rest_wavelength:.3f} Å,\n"
             f"  v_min={self.v_min}, v_max={self.v_max} km/s,\n"
             f"  o3_scale={self.o3_scale}, o3_half_width_aa={self.o3_half_width_aa} Å,\n"
-            f"  suffix={self.suffix!r}, depth={self.depth},\n"
+            f"  suffix={self.suffix!r}, extension={self.extension!r}, depth={self.depth},\n"
+            f"  exclude_files={self.exclude_files}"
             f"  dq_flags={self.dq_flags},\n"
             f")"
         )
@@ -326,6 +327,7 @@ class ProcessingPipeline:
 
         # 2. x2d 幾何補正（ファイルベース）
         if run_x2d:
+            self._check_reference_files(lac_paths)
             x2d_paths = self._run_x2d_batch(lac_paths, output_dir)
         else:
             x2d_paths = lac_paths
@@ -366,6 +368,67 @@ class ProcessingPipeline:
             after=after,
             output_paths=output_paths,
         )
+
+    @staticmethod
+    def _check_reference_files(lac_paths: list[Path]) -> None:
+        """x2d に必要な参照ファイルの存在を確認する.
+
+        FITSヘッダーから参照ファイルパスを読み取り、oref 環境変数のディレクトリと
+        照合して不足ファイルを表示する。不足がある場合は RuntimeError を送出する。
+
+        Parameters
+        ----------
+        lac_paths : list[Path]
+            _lac.fits ファイルパスのリスト
+
+        Raises
+        ------
+        RuntimeError
+            oref 環境変数が未設定、または参照ファイルが不足している場合
+        """
+        import os
+
+        from astropy.io import fits
+
+        _REF_KEYWORDS = (
+            "SDCTAB", "APDESTAB", "DISPTAB", "INANGTAB",
+            "SPTRCTAB", "PHOTTAB", "APERTAB", "PCTAB", "TDSTAB",
+        )
+
+        oref_dir = os.environ.get("oref", "")
+        if not oref_dir:
+            raise RuntimeError(
+                "環境変数 oref が設定されていません。\n"
+                "~/.zshrc に以下を追記して source してください:\n"
+                '  export oref="$HOME/crds_cache/references/hst/oref/"'
+            )
+        oref_path = Path(oref_dir)
+
+        missing: list[str] = []
+        for lac_path in lac_paths:
+            with fits.open(lac_path) as hdul:
+                header = hdul[0].header #type: ignore
+            for kw in _REF_KEYWORDS:
+                val = header.get(kw, "")
+                if not val or val == "N/A":
+                    continue
+                filename = val.split("$")[-1]
+                if not (oref_path / filename).exists():
+                    entry = f"{lac_path.name}  {kw}: {filename}"
+                    if entry not in missing:
+                        missing.append(entry)
+
+        if missing:
+            lines = "\n  ".join(missing)
+            raise RuntimeError(
+                f"参照ファイルが不足しています ({len(missing)} 件):\n  {lines}\n\n"
+                "以下のコマンドで取得してください:\n"
+                "  crds sync --contexts hst_latest.pmap --fetch-references \\\n"
+                + "    --files "
+                + " ".join(
+                    m.split(": ")[-1] for m in missing
+                )
+            )
 
     @staticmethod
     def _run_x2d_batch(

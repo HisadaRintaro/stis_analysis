@@ -31,7 +31,8 @@ stis_analysis/
 │   │   ├── __init__.py
 │   │   ├── fits_reader.py        ← STISFitsReader, ReaderCollection
 │   │   ├── instrument.py         ← InstrumentModel
-│   │   └── image.py              ← ImageUnit
+│   │   ├── image.py              ← ImageUnit
+│   │   └── wave_constants.py     ← 波長定数 (OIII λ4959/λ5007 等)
 │   │
 │   ├── lacosmic/                 ← Stage 1
 │   │   ├── __init__.py
@@ -46,7 +47,9 @@ stis_analysis/
 │
 ├── scripts/
 │   ├── run_lacosmic.py           ← Stage 1 実行スクリプト
-│   └── run_processing.py         ← Stage 2 実行スクリプト
+│   ├── run_processing.py         ← Stage 2 実行スクリプト
+│   ├── check_lacosmic_residual.py← LA-Cosmic 残差確認
+│   └── convolve2d_reference.py   ← convolve2d 参考実装
 │
 ├── tests/
 │   ├── test_core/
@@ -72,6 +75,7 @@ stis_analysis/
   - [x] 連続光差し引き (`ProcessingImageModel.subtract_continuum`)
   - [x] OIII λ4959 除去 (`ProcessingImageModel.remove_o3_4959`)
   - [x] ±2500 km/s 切り取り (`ProcessingImageModel.clip_velocity_range`)
+  - [x] 処理前後の比較プロット (`ProcessingResult.plot_before_after`, `plot_continuum_fit`)
   - [ ] 6スリット → 3D Cube 結合
   - [ ] 空間補間
 - [x] `processing/` のテスト整備（`ProcessingImageModel` のユニットテスト）
@@ -102,6 +106,80 @@ stis_analysis/
 ---
 
 ## インストール
+
+### Step 0: conda (Miniconda) のインストール
+
+conda が未インストールの場合は先にインストールしてください。
+
+→ [Miniconda 公式インストールガイド](https://docs.anaconda.com/miniconda/install/)
+
+### Step 1: hstcal のインストール（Stage 2 を使う場合のみ）
+
+Stage 2 の `processing` パイプラインは、STScI が提供する CALSTIS バイナリ (`cs7.e`) に依存しています。
+このバイナリは conda 経由でのみ配布されているため、以下の手順で別途インストールしてください。
+
+```bash
+# hstcal 専用の conda 環境を作成してインストール
+conda create -n calstis_bin
+conda install -n calstis_bin -c conda-forge hstcal
+```
+
+次に、`~/.zshrc`（または `~/.bashrc`）に以下を追記してください：
+
+```zsh
+# CALSTIS binary (cs7.e) for stistools/HST STIS pipeline
+# See: https://github.com/HisadaRintaro/stis_analysis
+export PATH="$HOME/miniconda3/envs/calstis_bin/bin:$PATH"
+```
+
+追記後、シェルを再起動するか `source ~/.zshrc` を実行してください。
+
+> `$(conda info --base)` は shell 起動時に conda が未初期化だとエラーになるため、
+> `$HOME/miniconda3`（Miniconda のデフォルトインストール先）をハードコードしています。
+
+> Stage 1 (lacosmic) のみ使用する場合、この手順は不要です。
+
+### Step 1.5: CRDS キャリブレーション参照ファイルのセットアップ（Stage 2 を使う場合のみ）
+
+**CRDS（Calibration Reference Data System）** は STScI が管理するキャリブレーション参照ファイルの配布システムです。
+CALSTISが波長較正・感度補正等を行うために必要なファイル群（`oref$...`）をここから取得します。
+
+→ [CRDS 公式ドキュメント](https://hst-crds.stsci.edu/static/users_guide/index.html)
+
+> **研究グループでの利用について**
+> 参照ファイルは容量が大きいため、共有サーバーや NAS 等にまとめて配置し、
+> メンバー全員が同じパスを `CRDS_PATH` / `oref` に設定して使用することを推奨します。
+> 個人環境で使う場合は `$HOME/crds_cache` に置きます。
+
+**① `~/.zshrc` に環境変数を追記**
+
+```zsh
+# HST Calibration Reference Data System
+export CRDS_SERVER_URL="https://hst-crds.stsci.edu"
+export CRDS_PATH="$HOME/crds_cache"           # 共有サーバーの場合はそのパスに変更
+export oref="$HOME/crds_cache/references/hst/oref/"
+```
+
+**② 参照ファイルをダウンロード（初回のみ・共有サーバーへの配置を推奨）**
+
+```bash
+# 必要なファイルを個別に取得（推奨：容量が少ない。ただし必要なファイルは使うデータによって異なります）
+crds sync --contexts hst_latest.pmap --fetch-references \
+  --files 16j16006o_sdc.fits 16j16005o_apd.fits l2j0137to_dsp.fits \
+  h5s11397o_iac.fits qa31608go_1dt.fits 95118575o_pht.fits \
+  y2r1559to_apt.fits q541740oo_pct.fits t9a1003so_tds.fits
+
+# または STIS 参照ファイルを全件同期（容量大）
+crds sync --contexts hst_latest.pmap --fetch-references
+```
+
+> **途中で中断した場合**は再度同じコマンドを実行してください。
+> `crds sync` は冪等なのでダウンロード済みのファイルはスキップされます。
+
+必要なファイル名は処理対象の FITS ファイルによって異なります。
+`pipeline.run()` 実行時に不足ファイルと取得コマンドが自動表示されます。
+
+### Step 2: パッケージのインストール
 
 ```bash
 # 基本インストール

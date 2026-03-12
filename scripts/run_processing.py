@@ -21,8 +21,8 @@ from stis_analysis.processing import ProcessingPipeline
 # 設定（必要に応じて変更）
 # ------------------------------------------------------------------ #
 
-LAC_DIR = Path("../../output/lac")     # _lac.fits があるディレクトリ
-OUTPUT_DIR = Path("../../output/proc") # _proc.fits の出力先
+LAC_DIR = Path("../data/output/lac")     # _lac.fits があるディレクトリ
+OUTPUT_DIR = Path("../data/output/proc") # _proc.fits の出力先
 
 RECESSION_VELOCITY = 1148.0         # NGC1068 後退速度 [km/s]
 
@@ -39,7 +39,7 @@ V_MAX = 2500.0
 
 # x2d（2D 幾何補正）を実行するか
 # _flt.fits を直接渡す場合は True、すでに x2d 済みなら False
-RUN_X2D = False
+RUN_X2D = True
 
 # ------------------------------------------------------------------ #
 
