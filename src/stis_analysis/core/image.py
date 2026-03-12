@@ -12,11 +12,13 @@ ImageUnit は spectrum_package と stis_la_cosmic の両実装をマージした
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 import numpy as np
 from astropy.io import fits  # type: ignore
+from scipy.sparse.csgraph import laplacian
+
 
 
 @dataclass(frozen=True)
@@ -82,3 +84,20 @@ class ImageUnit:
         """
         data = self.data.astype(np.uint8) if self.data.dtype == bool else self.data
         return fits.ImageHDU(data=data, header=self.header)
+
+    def imshow(self, ax=None, **kwargs):
+        import matplotlib.pyplot as plt
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        wavelength = self.wavelength
+        if type(wavelength) != type(None):
+            wavelength = cast(np.ndarray, wavelength)
+            extent = (wavelength[0], wavelength[-1], 0, self.naxis1)
+        else:
+            extent = None
+        cs = ax.imshow(self.data, **kwargs, extent = extent)
+        plt.colorbar(cs, ax=ax)
+        ax.set_xlabel(r'wavelength [$\AA$]')
+        ax.set_ylabel('spatial [pixel]')
+        return ax
