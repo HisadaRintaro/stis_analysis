@@ -22,7 +22,7 @@ import numpy as np
 from stis_analysis.core.fits_reader import ReaderCollection
 from stis_analysis.core.instrument import InstrumentModel
 from stis_analysis.processing.image import ProcessingImageCollection, ProcessingImageModel
-from stis_analysis.processing.wave_constants import c_kms, oiii5007_stp
+from stis_analysis.processing.wave_constants import c_kms, oiii5007_stp, oiii5007_oiii4959
 
 
 @dataclass(frozen=True)
@@ -234,8 +234,8 @@ class ProcessingPipeline:
         velocity clipping の下限 [km/s]（デフォルト: -2500.0）
     v_max : float
         velocity clipping の上限 [km/s]（デフォルト: 2500.0）
-    o3_scale : float | None
-        OIII λ4959 除去スケール係数。None の場合は 1/2.98 を使用。
+    o3_scale : float
+        OIII λ4959 除去スケール係数（デフォルト: 1 / oiii5007_oiii4959 ≈ 1/2.98）
     o3_half_width_aa : float
         OIII λ4959 除去の処理対象半幅 [Å]（デフォルト: 30.0）
     suffix : str
@@ -256,7 +256,7 @@ class ProcessingPipeline:
     rest_wavelength: float = oiii5007_stp
     v_min: float = -2500.0
     v_max: float = 2500.0
-    o3_scale: float | None = None
+    o3_scale: float = 1.0 / oiii5007_oiii4959
     o3_half_width_aa: float = 30.0
     suffix: str = "_lac"
     extension: str = ".fits"
@@ -315,7 +315,7 @@ class ProcessingPipeline:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # 1. _lac.fits ファイルを探索
+        # 1. ファイル探索
         instrument = InstrumentModel.load(
             file_directory=str(input_dir),
             suffix=self.suffix,
@@ -324,44 +324,57 @@ class ProcessingPipeline:
             exclude_files=self.exclude_files,
         )
         lac_paths = instrument.path_list
+        print(f"Step 1: Found {len(lac_paths)} files in {input_dir}")
 
-        # 2. x2d 幾何補正（ファイルベース）
+        # 2. stistools.x2d による 2D 幾何補正
         if run_x2d:
             self._check_reference_files(lac_paths)
             x2d_paths = self._run_x2d_batch(lac_paths, output_dir)
+            print(f"Step 2: x2d 完了 ({len(x2d_paths)} files)")
         else:
             x2d_paths = lac_paths
+            print("Step 2: x2d スキップ（run_x2d=False）")
 
-        # 3. x2d 済みファイルを ProcessingImageCollection として読み込み
+        # 3. ProcessingImageCollection として読み込み
         readers = ReaderCollection.from_paths(x2d_paths)
         before = ProcessingImageCollection.from_readers(readers, dq_flags=self.dq_flags)
+        print(f"Step 3: 読み込み完了 ({len(before.images)} images)")
 
-        # 4. インメモリ処理チェーン
-        after = before
-        after = after.subtract_continuum(
+        # 4. 連続光差し引き
+        after = before.subtract_continuum(
             continuum_windows_kms=self.continuum_windows_kms,
             recession_velocity=self.recession_velocity,
             rest_wavelength=self.rest_wavelength,
             degree=self.continuum_degree,
         )
+        print("Step 4: 連続光差し引き完了")
+
+        # 5. OIII λ4959 除去
         after = after.remove_o3_4959(
             recession_velocity=self.recession_velocity,
             scale=self.o3_scale,
             half_width_aa=self.o3_half_width_aa,
         )
+        print("Step 5: OIII λ4959 除去完了")
+
+        # 6. velocity range clipping
         after = after.clip_velocity_range(
             v_min=self.v_min,
             v_max=self.v_max,
             recession_velocity=self.recession_velocity,
             rest_wavelength=self.rest_wavelength,
         )
+        print(f"Step 6: velocity clipping 完了 ({self.v_min} ~ {self.v_max} km/s)")
 
-        # 5. _proc.fits として書き出し
+        # 7. _proc.fits として書き出し
         output_paths = after.write_fits(
             output_suffix=output_suffix,
             output_dir=output_dir,
             overwrite=overwrite,
         )
+        for p in output_paths:
+            print(f"  wrote: {p}")
+        print(f"Step 7: 書き出し完了 ({len(output_paths)} files)")
 
         return ProcessingResult(
             before=before,

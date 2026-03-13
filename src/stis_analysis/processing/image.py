@@ -27,33 +27,6 @@ from stis_analysis.processing.wave_constants import (
     oiii5007_oiii4959,
 )
 
-
-def _velocity_array(
-    wavelength: np.ndarray,
-    recession_velocity: float,
-    rest_wavelength: float,
-) -> np.ndarray:
-    """波長配列を銀河フレームでの速度配列に変換する.
-
-    Parameters
-    ----------
-    wavelength : np.ndarray
-        波長配列 [Å]
-    recession_velocity : float
-        銀河の後退速度 [km/s]
-    rest_wavelength : float
-        静止系基準波長 [Å]
-
-    Returns
-    -------
-    np.ndarray
-        速度配列 [km/s]。正値が赤方偏移方向。
-    """
-    z = recession_velocity / c_kms
-    lambda_ref = rest_wavelength * (1.0 + z)
-    return c_kms * (wavelength / lambda_ref - 1.0)
-
-
 @dataclass(frozen=True)
 class ProcessingImageModel(ImageModel):
     """LA-Cosmic 後の STIS 画像に対するスペクトル処理モデル.
@@ -92,6 +65,44 @@ class ProcessingImageModel(ImageModel):
     # 連続光差し引き
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _continuum_mask(
+        velocity: np.ndarray,
+        continuum_windows_kms: list[tuple[float, float]],
+        degree: int,
+    ) -> np.ndarray:
+        """連続光ウィンドウに対応する boolean マスクを生成する.
+
+        Parameters
+        ----------
+        velocity : np.ndarray
+            速度配列 [km/s]
+        continuum_windows_kms : list[tuple[float, float]]
+            連続光として使用する速度ウィンドウ [km/s] のリスト
+        degree : int
+            多項式次数（ピクセル数の下限チェックに使用）
+
+        Returns
+        -------
+        np.ndarray
+            連続光ウィンドウ内を True とする boolean マスク
+
+        Raises
+        ------
+        ValueError
+            ウィンドウ内のピクセル数が多項式次数に対して不足している場合
+        """
+        mask = np.zeros(len(velocity), dtype=bool)
+        for v_lo, v_hi in continuum_windows_kms:
+            mask |= (velocity >= v_lo) & (velocity <= v_hi)
+
+        if mask.sum() < degree + 1:
+            raise ValueError(
+                f"連続光ウィンドウ内のピクセル数（{mask.sum()}）が"
+                f"多項式次数 {degree} に対して不足しています。"
+            )
+        return mask
+
     def subtract_continuum(
         self,
         continuum_windows_kms: list[tuple[float, float]],
@@ -122,25 +133,11 @@ class ProcessingImageModel(ImageModel):
         ProcessingImageModel
             連続光差し引き済みの新しいインスタンス
         """
-        wavelength = self.sci.wavelength
-        if wavelength is None:
-            raise ValueError("SCI ヘッダーに WCS 情報（CRVAL1/CDELT1）がありません。")
-
-        velocity = _velocity_array(wavelength, recession_velocity, rest_wavelength)
-
-        # 連続光ウィンドウのマスク
-        cont_mask = np.zeros(len(wavelength), dtype=bool)
-        for v_lo, v_hi in continuum_windows_kms:
-            cont_mask |= (velocity >= v_lo) & (velocity <= v_hi)
-
-        if cont_mask.sum() < degree + 1:
-            raise ValueError(
-                f"連続光ウィンドウ内のピクセル数（{cont_mask.sum()}）が"
-                f"多項式次数 {degree} に対して不足しています。"
-            )
+        velocity = self.sci.velocity_array(recession_velocity, rest_wavelength)
+        cont_mask = self._continuum_mask(velocity, continuum_windows_kms, degree)
 
         sci_data = self.sci.data.copy()
-        pixel_indices = np.arange(len(wavelength), dtype=float)
+        pixel_indices = np.arange(len(velocity), dtype=float)
 
         for row in range(sci_data.shape[0]):
             coeffs = np.polyfit(
@@ -167,6 +164,7 @@ class ProcessingImageModel(ImageModel):
             primary_header=new_primary,
         )
 
+
     # ------------------------------------------------------------------
     # OIII λ4959 除去
     # ------------------------------------------------------------------
@@ -174,7 +172,7 @@ class ProcessingImageModel(ImageModel):
     def remove_o3_4959(
         self,
         recession_velocity: float,
-        scale: float | None = None,
+        scale: float = 1.0 / oiii5007_oiii4959,
         half_width_aa: float = 30.0,
     ) -> Self:
         """OIII λ4959 輝線を λ5007 プロファイルのスケールコピーで差し引く.
@@ -188,7 +186,7 @@ class ProcessingImageModel(ImageModel):
         recession_velocity : float
             銀河の後退速度 [km/s]（NGC1068: 1148）
         scale : float, optional
-            スケーリング係数。デフォルト: 1 / oiii5007_oiii4959 = 1/2.98
+            スケーリング係数。デフォルト: 1 / oiii5007_oiii4959 ≈ 1/2.98
         half_width_aa : float, optional
             4959 Å 近傍の処理対象半幅 [Å]（デフォルト: 30.0）
 
@@ -198,40 +196,28 @@ class ProcessingImageModel(ImageModel):
             OIII λ4959 除去済みの新しいインスタンス
         """
         wavelength = self.sci.wavelength
-        if wavelength is None:
-            raise ValueError("SCI ヘッダーに WCS 情報がありません。")
-
-        scale_factor = scale if scale is not None else (1.0 / oiii5007_oiii4959)
-
         z = recession_velocity / c_kms
         lambda_4959_obs = oiii4959_stp * (1.0 + z)
         lambda_5007_obs = oiii5007_stp * (1.0 + z)
 
-        # CDELT1 または CD1_1 からピクセルスケールを取得
-        _cdelt1_raw = self.sci.header.get("CDELT1", self.sci.header.get("CD1_1"))
-        if _cdelt1_raw is None or _cdelt1_raw == 0:
-            raise ValueError("SCI ヘッダーに CDELT1 / CD1_1 がありません。")
-        cdelt1 = float(_cdelt1_raw)  # type: ignore[arg-type]
-
         delta_lam = lambda_5007_obs - lambda_4959_obs  # [Å]
-        delta_pix = int(round(delta_lam / cdelt1))
+        delta_pix = int(round(delta_lam / self.sci.cdelt1))
 
         # 4959 近傍のピクセルマスク
         target_mask = np.abs(wavelength - lambda_4959_obs) < half_width_aa
 
         sci_data = self.sci.data.copy()
         n_wave = sci_data.shape[1]
-
-        for col_idx in np.where(target_mask)[0]:
-            src_idx = col_idx + delta_pix
-            if 0 <= src_idx < n_wave:
-                sci_data[:, col_idx] -= sci_data[:, src_idx] * scale_factor
+        target_cols = np.where(target_mask)[0]
+        src_cols = target_cols + delta_pix
+        valid = (src_cols >= 0) & (src_cols < n_wave)
+        sci_data[:, target_cols[valid]] -= sci_data[:, src_cols[valid]] * scale
 
         new_primary = self.primary_header.copy()
         new_primary["O3CORR"] = (True, "OIII 4959 removal applied")
-        new_primary["O3SCALE"] = (scale_factor, "Scale factor applied (1/F5007_F4959)")
+        new_primary["O3SCALE"] = (scale, "Scale factor applied (1/F5007_F4959)")
         new_primary.add_history(
-            f"OIII 4959 removal: scale={scale_factor:.4f}, "
+            f"OIII 4959 removal: scale={scale:.4f}, "
             f"lambda_4959_obs={lambda_4959_obs:.3f} Ang "
             f"(v_reces={recession_velocity} km/s)"
         )
@@ -281,11 +267,7 @@ class ProcessingImageModel(ImageModel):
         ValueError
             指定速度範囲にピクセルが存在しない場合
         """
-        wavelength = self.sci.wavelength
-        if wavelength is None:
-            raise ValueError("SCI ヘッダーに WCS 情報がありません。")
-
-        velocity = _velocity_array(wavelength, recession_velocity, rest_wavelength)
+        velocity = self.sci.velocity_array(recession_velocity, rest_wavelength)
         indices = np.where((velocity >= v_min) & (velocity <= v_max))[0]
 
         if len(indices) == 0:
@@ -310,7 +292,7 @@ class ProcessingImageModel(ImageModel):
         )
 
         # --- WCS 更新 ---
-        old_crval1 = float(self.sci.header.get("CRVAL1", wavelength[0]))  # type: ignore[arg-type]
+        old_crval1 = float(self.sci.header.get("CRVAL1", self.sci.wavelength[0]))  # type: ignore[arg-type]
         _cdelt1_raw = self.sci.header.get("CDELT1", self.sci.header.get("CD1_1", 1.0))
         old_cdelt1 = float(_cdelt1_raw)  # type: ignore[arg-type]
         old_crpix1 = float(self.sci.header.get("CRPIX1", 1.0))  # type: ignore[arg-type]
@@ -395,25 +377,21 @@ class ProcessingImageModel(ImageModel):
         if ax is None:
             _, ax = plt.subplots(figsize=(10, 4))
 
-        wavelength = self.sci.wavelength
-        if wavelength is None:
-            raise ValueError("SCI ヘッダーに WCS 情報がありません。")
-
-        velocity = _velocity_array(wavelength, recession_velocity, rest_wavelength)
+        velocity = self.sci.velocity_array(recession_velocity, rest_wavelength)
         spectrum = self.sci.data[slit_index, :]
 
         # スペクトルをプロット
         ax.plot(velocity, spectrum, color="steelblue", lw=0.8, label="spectrum")
 
         # 連続光ウィンドウをハイライト
-        cont_mask = np.zeros(len(wavelength), dtype=bool)
+        cont_mask = np.zeros(len(velocity), dtype=bool)
         for k, (v_lo, v_hi) in enumerate(continuum_windows_kms):
             cont_mask |= (velocity >= v_lo) & (velocity <= v_hi)
             ax.axvspan(v_lo, v_hi, alpha=0.2, color="orange",
                        label="cont window" if k == 0 else None)
 
         # 連続光フィット
-        pixel_indices = np.arange(len(wavelength), dtype=float)
+        pixel_indices = np.arange(len(velocity), dtype=float)
         if cont_mask.sum() >= degree + 1:
             coeffs = np.polyfit(
                 pixel_indices[cont_mask], spectrum[cont_mask], deg=degree
@@ -554,7 +532,7 @@ class ProcessingImageCollection(ImageCollection):
     def remove_o3_4959(
         self,
         recession_velocity: float,
-        scale: float | None = None,
+        scale: float = 1.0 / oiii5007_oiii4959,
         half_width_aa: float = 30.0,
     ) -> "ProcessingImageCollection":
         """全画像に OIII λ4959 除去を一括適用する."""
