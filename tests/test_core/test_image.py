@@ -81,10 +81,11 @@ class TestImageUnitWavelength:
         assert unit.wavelength is not None
         assert unit.wavelength[0] == pytest.approx(4000.0)
 
-    def test_wavelength_none_when_no_wcs(self, basic_header: fits.Header):
-        """CRVAL1/CDELT1 がない場合 None を返すこと."""
+    def test_wavelength_raises_when_no_wcs(self, basic_header: fits.Header):
+        """CRVAL1/CDELT1 がない場合 ValueError を投げること."""
         unit = ImageUnit(data=np.ones((10, 20)), header=basic_header)
-        assert unit.wavelength is None
+        with pytest.raises(ValueError, match="WCS"):
+            unit.wavelength
 
 
 class TestImageUnitToHdu:

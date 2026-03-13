@@ -18,6 +18,7 @@ from typing import cast
 import numpy as np
 from astropy.io import fits  # type: ignore
 from scipy.sparse.csgraph import laplacian
+from .wave_constants import c_kms
 
 
 
@@ -53,7 +54,17 @@ class ImageUnit:
         return int(self.header.get("NAXIS2", 0))  # type: ignore[arg-type]
 
     @property
-    def wavelength(self) -> np.ndarray | None:
+    def cdelt1(self) -> float:
+        """波長/pixel（CDELT1 または CD1_1）."""
+        return cast(float, self.header.get("CDELT1", self.header.get("CD1_1")))
+
+    @property
+    def crval1(self) -> float:
+        """参照波長（CRVAL1）."""
+        return cast(float, self.header.get("CRVAL1"))
+
+    @property
+    def wavelength(self) -> np.ndarray:
         """ヘッダーの WCS キーワードから波長配列を生成する.
 
         CRVAL1（参照ピクセルの波長）と CDELT1 または CD1_1（波長/pixel）から
@@ -61,16 +72,41 @@ class ImageUnit:
 
         Returns
         -------
-        np.ndarray | None
-            波長配列 [Å]。WCS 情報が不足している場合は None
+        np.ndarray
+            波長配列 [Å]。WCS 情報が不足している場合は ValueError を投げる。
         """
         crval1 = cast(float | None, self.header.get("CRVAL1"))
         cdelt1 = cast(float | None, self.header.get("CDELT1", self.header.get("CD1_1")))
         if crval1 is None or cdelt1 is None:
-            return None
+            raise ValueError("SCI ヘッダーに WCS 情報（CRVAL1/CDELT1）がありません。")
         crpix1 = cast(float, self.header.get("CRPIX1", 1.0))
         n_pixels = self.data.shape[1]
         return crval1 + cdelt1 * (np.arange(n_pixels) - (crpix1 - 1))
+
+    def velocity_array(
+        self,
+        recession_velocity: float,
+        rest_wavelength: float,
+    ) -> np.ndarray:
+        """波長配列を銀河フレームでの速度配列に変換する.
+
+        Parameters
+        ----------
+        wavelength : np.ndarray
+            波長配列 [Å]
+        recession_velocity : float
+            銀河の後退速度 [km/s]
+        rest_wavelength : float
+            静止系基準波長 [Å]
+
+        Returns
+        -------
+        np.ndarray
+            速度配列 [km/s]。正値が赤方偏移方向。
+        """
+        z = recession_velocity / c_kms
+        lambda_ref = rest_wavelength * (1.0 + z)
+        return c_kms * (self.wavelength / lambda_ref - 1.0)
 
     def to_hdu(self) -> fits.ImageHDU:
         """fits.ImageHDU に変換する.
