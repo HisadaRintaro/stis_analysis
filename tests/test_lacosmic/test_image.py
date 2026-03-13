@@ -276,12 +276,11 @@ class TestImageCollection:
         col = ReaderCollection.from_paths([sample_fits_path])
         ic = ImageCollection.from_readers(
             col, contrast=3.0, cr_threshold=4.0,
-            neighbor_threshold=4.5, error=6.0,
+            neighbor_threshold=4.5,
         )
         assert ic.contrast == 3.0
         assert ic.cr_threshold == 4.0
         assert ic.neighbor_threshold == 4.5
-        assert ic.error == 6.0
 
     def test_remove_cosmic_ray_calls_each_model(self, sample_fits_path: Path):
         from stis_analysis.core.fits_reader import ReaderCollection

@@ -17,6 +17,7 @@ import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Self
+from matplotlib.colors import AsinhNorm, Normalize
 import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
@@ -846,6 +847,8 @@ class ImageCollection:
         half_width: int = 100,
         save_dir: Path | str | None = None,
         title: str | None = None,
+        cmap: str = "coolwarm",
+        norm: Normalize | None = AsinhNorm(),
         **kwargs,
     ) -> plt.Axes:  # pyright: ignore
         """全画像をサブプロットのグリッドで一覧表示する.
@@ -879,14 +882,14 @@ class ImageCollection:
         if ax is None:
             _, ax = plt.subplots(2, 3, figsize=(10, 8))
         for i, image in enumerate(self.images):
-            cs = ax[i // 3, i % 3].imshow(image.sci.data, **kwargs)
+            cs = ax[i // 3, i % 3].imshow(image.sci.data, cmap=cmap, norm=norm, **kwargs)
             ax[i // 3, i % 3].set_title(image.filename)
             if area:
                 ax[i // 3, i % 3].set_xlim(x_center - half_width, x_center + half_width)
                 ax[i // 3, i % 3].set_ylim(y_center - half_width, y_center + half_width)
             plt.colorbar(cs)
         if save_dir:
-            self.save_fig(ax, Path(save_dir) / "imshow.png", title)
+            self.save_fig(ax, Path(save_dir) / f"{title}_imshow.png", title)
         return ax
 
     def imshow_mask(
@@ -968,7 +971,7 @@ class ImageCollection:
         x_center: int = 330,
         y_center: int = 550,
         half_width: int = 100,
-        imshow_kwargs: dict | None = None,
+        imshow_kwargs: dict = {"cmap": "coolwarm", "norm": AsinhNorm()},
         save_dir: Path | str | None = None,
         title: str | None = None,
         **kwargs,
@@ -1160,12 +1163,13 @@ class ImageCollection:
 
         if save_dir is not None:
             save_path = (
-                Path(save_dir) 
+                Path(save_dir)
                 / f"residual_figure(slit_index_{slit_index},recession_velocity_{recession_velocity}).png"
             )
-            fig.savefig(save_path)
+            self.save_fig(axes_2d, save_path)
+        else:
+            plt.show()
 
-        plt.show()
         return axes_2d
 
     def __len__(self) -> int:
