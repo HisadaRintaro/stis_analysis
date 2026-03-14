@@ -26,41 +26,67 @@ graph LR
 ```
 stis_analysis/
 ├── src/stis_analysis/
-│   ├── __init__.py
-│   ├── core/                     ← 共通基盤
-│   │   ├── __init__.py
-│   │   ├── fits_reader.py        ← STISFitsReader, ReaderCollection
-│   │   ├── instrument.py         ← InstrumentModel
-│   │   ├── image.py              ← ImageUnit（unit プロパティ・plot_spectrum() を含む）
-│   │   └── wave_constants.py     ← 波長定数 (OIII λ4959/λ5007 等)
+│   ├── core/                          ← 共通基盤
+│   │   ├── fits_reader.py             ← STISFitsReader, ReaderCollection
+│   │   ├── instrument.py              ← InstrumentModel
+│   │   ├── image.py                   ← ImageUnit
+│   │   └── wave_constants.py          ← 波長定数・輝線波長 (c_kms, oiii5007_stp 等)
 │   │
-│   ├── lacosmic/                 ← Stage 1
-│   │   ├── __init__.py
-│   │   ├── image.py              ← ImageModel, ImageCollection
-│   │   └── pipeline.py           ← LaCosmicPipeline, PipelineResult
+│   ├── lacosmic/                      ← Stage 1: 宇宙線除去
+│   │   ├── image.py                   ← ImageModel, ImageCollection
+│   │   └── pipeline.py                ← LaCosmicPipeline, PipelineResult
 │   │
-│   └── processing/               ← Stage 2
-│       ├── __init__.py
-│       ├── image.py              ← ProcessingImageModel（setup() で処理パラメータを設定）, ProcessingImageCollection
-│       ├── pipeline.py           ← ProcessingPipeline, ProcessingResult
-│       └── wave_constants.py     ← 波長定数 (OIII λ4959/λ5007 等)
+│   └── processing/                    ← Stage 2: スペクトル処理
+│       ├── image.py                   ← ProcessingImageModel, ProcessingImageCollection
+│       ├── pipeline.py                ← ProcessingPipeline, ProcessingResult
+│       └── wave_constants.py          ← core.wave_constants の再エクスポート
 │
 ├── scripts/
-│   ├── run_lacosmic.py           ← Stage 1 ステップ確認スクリプト
-│   ├── run_lacosmic_pipeline.py  ← Stage 1 パイプライン実行スクリプト
-│   ├── run_processing.py         ← Stage 2 ステップ確認スクリプト
-│   ├── run_processing_pipeline.py← Stage 2 パイプライン実行スクリプト
-│   ├── check_lacosmic_residual.py← LA-Cosmic 残差確認
-│   └── convolve2d_reference.py   ← convolve2d 参考実装
+│   ├── run_lacosmic.py                ← Stage 1 ステップ確認（IPython 対話用）
+│   ├── run_lacosmic_pipeline.py       ← Stage 1 パイプライン一括実行
+│   ├── run_processing.py              ← Stage 2 ステップ確認（IPython 対話用）
+│   ├── run_processing_pipeline.py     ← Stage 2 パイプライン一括実行
+│   ├── check_lacosmic_residual.py     ← LA-Cosmic 残差確認
+│   └── convolve2d_reference.py        ← convolve2d 参考実装
 │
 ├── tests/
 │   ├── test_core/
 │   ├── test_lacosmic/
-│   └── test_processing/          ← test_image.py, test_pipeline.py
+│   └── test_processing/               ← test_image.py, test_pipeline.py
 │
 ├── pyproject.toml
 └── README.md
 ```
+
+### 主要クラス
+
+#### `core`
+
+| クラス / 定数 | 説明 |
+|---|---|
+| `STISFitsReader` | FITS ファイルを SCI / ERR / DQ HDU に分解して読み込む |
+| `ReaderCollection` | 複数の `STISFitsReader` をまとめるコレクション |
+| `InstrumentModel` | ディレクトリ探索・ファイルリスト管理 |
+| `ImageUnit` | data / header のペア。`wavelength`・`plot_spectrum()` を持つ |
+| `wave_constants` | `c_kms`, `oiii5007_stp`, `oiii4959_stp` 等の輝線波長定数 |
+
+#### `lacosmic`
+
+| クラス | 説明 |
+|---|---|
+| `ImageModel` | 1 枚の FITS 画像に対する LA-Cosmic 宇宙線除去モデル |
+| `ImageCollection` | 複数 `ImageModel` のコレクション。`remove_cosmic_ray()` を提供 |
+| `LaCosmicPipeline` | `_crj.fits` → 宇宙線除去 → `_lac.fits` 書き出しを一括実行 |
+| `PipelineResult` | `before` / `after` の `ImageCollection` と出力パスリストを保持 |
+
+#### `processing`
+
+| クラス | 説明 |
+|---|---|
+| `ProcessingImageModel` | 1 枚の `_lac.fits` に対するスペクトル処理モデル。`setup()` で処理パラメータを設定し、`subtract_continuum()` → `remove_o3_4959()` → `clip_velocity_range()` をチェーンで適用できる |
+| `ProcessingImageCollection` | 複数 `ProcessingImageModel` のコレクション |
+| `ProcessingPipeline` | `_lac.fits` → x2d 補正 → 連続光差し引き → OIII λ4959 除去 → velocity clipping → `_proc.fits` 書き出しを一括実行 |
+| `ProcessingResult` | `before` / `after` の `ProcessingImageCollection` と出力パスリストを保持。`plot_before_after()` / `plot_continuum_fit()` でステップ確認プロットを生成 |
 
 ---
 
@@ -71,7 +97,7 @@ stis_analysis/
 - [x] `lacosmic/` の移植 — `stis_la_cosmic` から import パスを書き換えて移行
 - [x] `lacosmic/` のテスト整備
 
-### Phase 2: Stage 2 開発 🔄 進行中
+### Phase 2: Stage 2 開発 ✅ 完了
 - [x] `processing/` サブパッケージの設計・実装
   - [x] stistools pipeline 連携 (`ProcessingPipeline._run_x2d_batch`・既存 `_x2d.fits` のスキップ)
   - [x] 連続光差し引き (`ProcessingImageModel.subtract_continuum`)
@@ -82,13 +108,16 @@ stis_analysis/
   - [x] 出力ディレクトリ自動退避 (`ProcessingPipeline._resolve_output_dir`)
   - [x] `run()` に `save_picture` / `slit_index` パラメータ追加（処理ステップ毎の確認プロット保存）
   - [x] `ProcessingImageModel.setup()` クラスメソッド追加（処理パラメータをフィールド化）
-  - [ ] 6スリット → 3D Cube 結合
-  - [ ] 空間補間
 - [x] `processing/` のテスト整備（`ProcessingImageModel` のユニットテスト）
 - [x] `ProcessingPipeline` の統合テスト整備（`_resolve_output_dir` + `run()` 退避動作）
 
+> **スコープ**: `processing` の責務は `_lac.fits` → `_proc.fits` 出力まで。
+> 3D Cube 結合・空間補間は Stage 3 で扱う。
+
 ### Phase 3: Stage 3 開発
 - [ ] `analysis/` サブパッケージの設計・実装
+  - [ ] 6スリット → 3D Cube 結合
+  - [ ] 空間補間
   - [ ] Velocity Map 生成
   - [ ] 追加解析処理
 - [ ] `analysis/` のテスト整備
