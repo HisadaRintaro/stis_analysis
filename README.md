@@ -31,7 +31,7 @@ stis_analysis/
 │   │   ├── __init__.py
 │   │   ├── fits_reader.py        ← STISFitsReader, ReaderCollection
 │   │   ├── instrument.py         ← InstrumentModel
-│   │   ├── image.py              ← ImageUnit
+│   │   ├── image.py              ← ImageUnit（unit プロパティ・plot_spectrum() を含む）
 │   │   └── wave_constants.py     ← 波長定数 (OIII λ4959/λ5007 等)
 │   │
 │   ├── lacosmic/                 ← Stage 1
@@ -41,20 +41,22 @@ stis_analysis/
 │   │
 │   └── processing/               ← Stage 2
 │       ├── __init__.py
-│       ├── image.py              ← ProcessingImageModel, ProcessingImageCollection
+│       ├── image.py              ← ProcessingImageModel（setup() で処理パラメータを設定）, ProcessingImageCollection
 │       ├── pipeline.py           ← ProcessingPipeline, ProcessingResult
 │       └── wave_constants.py     ← 波長定数 (OIII λ4959/λ5007 等)
 │
 ├── scripts/
-│   ├── run_lacosmic.py           ← Stage 1 実行スクリプト
-│   ├── run_processing.py         ← Stage 2 実行スクリプト
+│   ├── run_lacosmic.py           ← Stage 1 ステップ確認スクリプト
+│   ├── run_lacosmic_pipeline.py  ← Stage 1 パイプライン実行スクリプト
+│   ├── run_processing.py         ← Stage 2 ステップ確認スクリプト
+│   ├── run_processing_pipeline.py← Stage 2 パイプライン実行スクリプト
 │   ├── check_lacosmic_residual.py← LA-Cosmic 残差確認
 │   └── convolve2d_reference.py   ← convolve2d 参考実装
 │
 ├── tests/
 │   ├── test_core/
 │   ├── test_lacosmic/
-│   └── test_processing/
+│   └── test_processing/          ← test_image.py, test_pipeline.py
 │
 ├── pyproject.toml
 └── README.md
@@ -71,28 +73,19 @@ stis_analysis/
 
 ### Phase 2: Stage 2 開発 🔄 進行中
 - [x] `processing/` サブパッケージの設計・実装
-  - [x] stistools pipeline 連携 (`ProcessingPipeline._run_x2d_batch`)
+  - [x] stistools pipeline 連携 (`ProcessingPipeline._run_x2d_batch`・既存 `_x2d.fits` のスキップ)
   - [x] 連続光差し引き (`ProcessingImageModel.subtract_continuum`)
   - [x] OIII λ4959 除去 (`ProcessingImageModel.remove_o3_4959`)
   - [x] ±2500 km/s 切り取り (`ProcessingImageModel.clip_velocity_range`)
   - [x] 処理前後の比較プロット (`ProcessingResult.plot_before_after`, `plot_continuum_fit`)
+  - [x] プロット静的メソッド分離 (`ProcessingResult._plot_before_after`, `_plot_continuum_fit`)
+  - [x] 出力ディレクトリ自動退避 (`ProcessingPipeline._resolve_output_dir`)
+  - [x] `run()` に `save_picture` / `slit_index` パラメータ追加（処理ステップ毎の確認プロット保存）
+  - [x] `ProcessingImageModel.setup()` クラスメソッド追加（処理パラメータをフィールド化）
   - [ ] 6スリット → 3D Cube 結合
   - [ ] 空間補間
 - [x] `processing/` のテスト整備（`ProcessingImageModel` のユニットテスト）
-- [ ] `ProcessingPipeline` の統合テスト整備
-
-#### 未解決の課題・開発の後退
-
-- **lacosmic 輝線保護** ([#10](https://github.com/HisadaRintaro/stis_analysis/issues/10)) ⚠️ 開発中断・差し戻し済み
-  - **問題**: LA-Cosmic が輝線（OIII λ5007 等）の高輝度ピクセルを宇宙線として誤検出し、
-    輝線フラックスが削られてしまう。
-  - **試みたアプローチ**: `build_emission_mask()` で空間方向の連続性（MAD σ-clip +
-    `min_spatial_extent` 行以上の連続区間）により輝線を検出し、`remove_cosmics` の
-    `mask` 引数に渡すことで CR 検出から保護する実装を試みた。
-  - **結果**: 保護マスクを渡しても輝線フラックスの損失が十分に抑えられず、解決策が
-    見つからなかったため中断。
-  - **現状**: 実装途中のコードは `wip/emission-line-protection` ブランチに保存し、
-    `main` は本機能追加前のコミットに差し戻した。
+- [x] `ProcessingPipeline` の統合テスト整備（`_resolve_output_dir` + `run()` 退避動作）
 
 ### Phase 3: Stage 3 開発
 - [ ] `analysis/` サブパッケージの設計・実装
