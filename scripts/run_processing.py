@@ -25,7 +25,7 @@ from pathlib import Path
 from stis_analysis.core.fits_reader import ReaderCollection
 from stis_analysis.core.instrument import InstrumentModel
 from stis_analysis.processing.image import ProcessingImageCollection
-from stis_analysis.processing.pipeline import ProcessingPipeline
+from stis_analysis.processing.pipeline import ProcessingPipeline, ProcessingResult
 
 # ------------------------------------------------------------------ #
 # 設定（必要に応じて変更）
@@ -44,7 +44,7 @@ RECESSION_VELOCITY = 1148.0         # NGC1068 後退速度 [km/s]
 # OIII λ5007 観測波長を v=0 とした相対速度 [km/s] でウィンドウを指定
 # → 輝線（λ4959, λ5007）が重ならない領域を選ぶ
 CONTINUUM_WINDOWS_KMS = [
-    (-4000.0, -3200.0),
+    (-4500.0, -3700.0),
     (3000.0, 4000.0),
 ]
 CONTINUUM_DEGREE = 1
@@ -62,7 +62,8 @@ V_MAX = 2500.0
 RUN_X2D = True
 
 # 確認用スリット行インデックス
-SLIT_INDEX = 10
+SLIT_INDEX = 572
+SAVE_PICTURE = True
 
 # ------------------------------------------------------------------ #
 
@@ -100,50 +101,54 @@ else:
 # ------------------------------------------------------------------ #
 
 readers = ReaderCollection.from_paths(x2d_paths)
-collection = ProcessingImageCollection.from_readers(readers, dq_flags=DQ_FLAGS)
+collection = ProcessingImageCollection.setup(
+    readers,
+    recession_velocity=RECESSION_VELOCITY,
+    continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
+    o3_half_width_aa=O3_HALF_WIDTH_AA,
+    dq_flags=DQ_FLAGS,
+)
 print(f"\nStep 3: 読み込み完了 ({len(collection.images)} images)")
 
 # ------------------------------------------------------------------ #
 # Step 4. 連続光差し引き
 # ------------------------------------------------------------------ #
 
-continuum_subtracted = collection.subtract_continuum(
-    continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
-    recession_velocity=RECESSION_VELOCITY,
-    degree=CONTINUUM_DEGREE,
-)
+continuum_subtracted = collection.subtract_continuum(degree=CONTINUUM_DEGREE)
 print("\nStep 4: 連続光差し引き完了")
 
-# 確認プロット: 連続光フィット（差し引き前）
-for image in collection.images:
-    image.plot_continuum_fit(
-        slit_index=SLIT_INDEX,
-        continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
-        recession_velocity=RECESSION_VELOCITY,
-        degree=CONTINUUM_DEGREE,
-    )
+# 確認プロット: 連続光フィット（差し引き後）
+after_continuum_subtraction= ProcessingResult(
+    before=collection,
+    after=continuum_subtracted,
+    output_paths=x2d_paths,
+)
 
 # ------------------------------------------------------------------ #
 # Step 5. OIII λ4959 除去
 # ------------------------------------------------------------------ #
 
-o3_removed = continuum_subtracted.remove_o3_4959(
-    recession_velocity=RECESSION_VELOCITY,
-    scale=O3_SCALE,
-    half_width_aa=O3_HALF_WIDTH_AA,
-)
+o3_removed = continuum_subtracted.remove_o3_4959(scale=O3_SCALE)
 print("\nStep 5: OIII λ4959 除去完了")
+
+after_o3_removal= ProcessingResult(
+    before=continuum_subtracted,
+    after=o3_removed,
+    output_paths=x2d_paths,
+)
 
 # ------------------------------------------------------------------ #
 # Step 6. velocity range clipping
 # ------------------------------------------------------------------ #
 
-clipped = o3_removed.clip_velocity_range(
-    v_min=V_MIN,
-    v_max=V_MAX,
-    recession_velocity=RECESSION_VELOCITY,
-)
+clipped = o3_removed.clip_velocity_range(v_min=V_MIN, v_max=V_MAX)
 print(f"\nStep 6: velocity clipping 完了 ({V_MIN} ~ {V_MAX} km/s)")
+
+after_velocity_clipping= ProcessingResult(
+    before=o3_removed,
+    after=clipped,
+    output_paths=x2d_paths,
+)
 
 # ------------------------------------------------------------------ #
 # Step 7. _proc.fits として書き出し
@@ -159,17 +164,27 @@ print(f"\nStep 6: velocity clipping 完了 ({V_MIN} ~ {V_MAX} km/s)")
     #print(f"  {p}")
 
 # ------------------------------------------------------------------ #
-# Step 8. 処理前後の比較プロット
+# Step 8. 確認用画像の保存
 # ------------------------------------------------------------------ #
 
-print("\nStep 8: 確認用プロット")
-
-# 連続光フィット確認（差し引き前スペクトルとフィット曲線）
-for image in collection.images:
-    image.plot_continuum_fit(
-        slit_index=SLIT_INDEX,
-        continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
-        recession_velocity=RECESSION_VELOCITY,
-        degree=CONTINUUM_DEGREE,
-        o3_half_width_aa=O3_HALF_WIDTH_AA,
+if SAVE_PICTURE:
+    after_continuum_subtraction.plot_before_after(
+        slit_index=SLIT_INDEX, 
+        title=f"After_continuum_subtraction",
+        save_dir=OUTPUT_DIR
+    )
+    after_continuum_subtraction.plot_continuum_fit(
+        slit_index=SLIT_INDEX, 
+        title=f"Continuum_Fit",
+        save_dir=OUTPUT_DIR
+    )
+    after_o3_removal.plot_before_after(
+        slit_index=SLIT_INDEX, 
+        title=f"After_OIII_removal",
+        save_dir=OUTPUT_DIR
+    )
+    after_velocity_clipping.plot_before_after(
+        slit_index=SLIT_INDEX, 
+        title=f"After_velocity_range_clipping",
+        save_dir=OUTPUT_DIR
     )

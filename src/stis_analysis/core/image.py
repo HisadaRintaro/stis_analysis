@@ -62,6 +62,11 @@ class ImageUnit:
     def crval1(self) -> float:
         """参照波長（CRVAL1）."""
         return cast(float, self.header.get("CRVAL1"))
+    
+    @property
+    def unit(self) -> str:
+        """単位（BUNIT）."""
+        return cast(str, self.header.get("BUNIT", "counts"))
 
     @property
     def wavelength(self) -> np.ndarray:
@@ -120,6 +125,33 @@ class ImageUnit:
         """
         data = self.data.astype(np.uint8) if self.data.dtype == bool else self.data
         return fits.ImageHDU(data=data, header=self.header)
+
+    def plot_spectrum(self, slit_index: int, ax=None, **kwargs):
+        """指定スリット行のスペクトルを波長軸でプロットする.
+
+        Parameters
+        ----------
+        slit_index : int
+            描画するスリット行のインデックス（空間方向）
+        ax : matplotlib.axes.Axes, optional
+            描画先 Axes。None の場合は新規作成。
+        **kwargs
+            ax.plot() に渡す追加キーワード引数
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(10, 4))
+
+        wavelength = self.wavelength
+        ax.plot(wavelength, self.data[slit_index, :], **kwargs)
+        ax.set_xlabel(r"Wavelength [$\AA$]")
+        ax.set_ylabel(self.unit)
+        return ax
 
     def imshow(self, ax=None, **kwargs):
         import matplotlib.pyplot as plt

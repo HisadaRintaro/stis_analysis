@@ -582,7 +582,7 @@ class ImageModel:
             ax.plot(spectrum, **kwargs)
             ax.set_xlabel("Pixel")
 
-        ax.set_ylabel("Counts")
+        ax.set_ylabel(self.sci.unit)
         ax.set_title(f"{self.filename} (slit index = {slit_index})")
         return ax
 

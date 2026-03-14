@@ -115,7 +115,7 @@ class LaCosmicPipeline:
         input_dir: str | Path,
         output_dir: str | Path,
         output_suffix: str = "_lac",
-        save: bool = False,
+        save_picture: bool = False,
         slit_index: int | None = None,
         recession_velocity: float | None = None,
     ) -> PipelineResult:
@@ -136,7 +136,7 @@ class LaCosmicPipeline:
             既存ファイルがある場合は番号付きディレクトリに退避する。
         output_suffix : str, optional
             出力ファイルの接尾辞（デフォルト: "_lac"）
-        save : bool, optional
+        save_picture : bool, optional
             True の場合、output_dir に確認用画像を保存する（デフォルト: False）。
             保存されるファイル:
             - imshow.png                      : 処理後画像一覧
@@ -193,7 +193,7 @@ class LaCosmicPipeline:
             print(f"  wrote: {p}")
 
         # 5. 確認用画像の保存
-        if save:
+        if save_picture:
             after.imshow(save_dir=output_path, title="after")
             before.imshow(save_dir=output_path, title="before")
             after.imshow_mask(mask_type="dq", save_dir=output_path)

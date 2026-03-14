@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pytest
 from astropy.io import fits
 
 from stis_analysis.core.fits_reader import STISFitsReader, ReaderCollection
+from stis_analysis.lacosmic.image import ImageModel
 from stis_analysis.processing.image import ProcessingImageModel, ProcessingImageCollection
 from stis_analysis.processing.wave_constants import (
     c_kms,
@@ -24,6 +24,8 @@ from stis_analysis.processing.wave_constants import (
 # ---------------------------------------------------------------------------
 
 NGC1068_V = 1148.0  # km/s
+
+CONTINUUM_WINDOWS = [(-4000, -3200), (3000, 4000)]
 
 
 @pytest.fixture
@@ -91,7 +93,12 @@ def proc_fits_path(tmp_path: Path, proc_fits_shape: tuple[int, int]) -> Path:
 @pytest.fixture
 def proc_model(proc_fits_path: Path) -> ProcessingImageModel:
     reader = STISFitsReader.open(proc_fits_path)
-    return ProcessingImageModel.from_reader(reader)
+    model = ImageModel.from_reader(reader)
+    return ProcessingImageModel.setup(
+        model,
+        recession_velocity=NGC1068_V,
+        continuum_windows_kms=CONTINUUM_WINDOWS,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -101,46 +108,27 @@ def proc_model(proc_fits_path: Path) -> ProcessingImageModel:
 
 class TestSubtractContinuum:
     def test_returns_new_instance(self, proc_model: ProcessingImageModel):
-        result = proc_model.subtract_continuum(
-            continuum_windows_kms=[(-4000, -3200), (3000, 4000)],
-            recession_velocity=NGC1068_V,
-        )
+        result = proc_model.subtract_continuum()
         assert result is not proc_model
 
     def test_header_contsub_true(self, proc_model: ProcessingImageModel):
-        result = proc_model.subtract_continuum(
-            continuum_windows_kms=[(-4000, -3200), (3000, 4000)],
-            recession_velocity=NGC1068_V,
-        )
+        result = proc_model.subtract_continuum()
         assert result.primary_header.get("CONTSUB") is True
 
     def test_header_contdeg_stored(self, proc_model: ProcessingImageModel):
-        result = proc_model.subtract_continuum(
-            continuum_windows_kms=[(-4000, -3200), (3000, 4000)],
-            recession_velocity=NGC1068_V,
-            degree=1,
-        )
+        result = proc_model.subtract_continuum(degree=1)
         assert result.primary_header.get("CONTDEG") == 1
 
     def test_window_keywords_stored(self, proc_model: ProcessingImageModel):
-        windows = [(-4000.0, -3200.0), (3000.0, 4000.0)]
-        result = proc_model.subtract_continuum(
-            continuum_windows_kms=windows,
-            recession_velocity=NGC1068_V,
-        )
+        result = proc_model.subtract_continuum()
         assert result.primary_header.get("CWIN0LO") == pytest.approx(-4000.0)
         assert result.primary_header.get("CWIN0HI") == pytest.approx(-3200.0)
         assert result.primary_header.get("CWIN1LO") == pytest.approx(3000.0)
         assert result.primary_header.get("CWIN1HI") == pytest.approx(4000.0)
 
-    def test_continuum_level_reduced(
-        self, proc_model: ProcessingImageModel, proc_fits_shape: tuple[int, int]
-    ):
+    def test_continuum_level_reduced(self, proc_model: ProcessingImageModel):
         """純粋な連続光を差し引いた後の平均値が差し引き前より小さくなること."""
-        result = proc_model.subtract_continuum(
-            continuum_windows_kms=[(-4000, -3200), (3000, 4000)],
-            recession_velocity=NGC1068_V,
-        )
+        result = proc_model.subtract_continuum()
         # 輝線から離れた領域では差し引き後の値が 0 に近い
         # continuum window 内のピクセルを確認
         wavelength = proc_model.sci.wavelength
@@ -168,12 +156,14 @@ class TestSubtractContinuum:
         path = tmp_path / "no_wcs.fits"
         hdul.writeto(path)
         reader = STISFitsReader.open(path)
-        model = ProcessingImageModel.from_reader(reader)
+        model = ImageModel.from_reader(reader)
+        proc = ProcessingImageModel.setup(
+            model,
+            recession_velocity=NGC1068_V,
+            continuum_windows_kms=[(-500, -200)],
+        )
         with pytest.raises(ValueError, match="WCS"):
-            model.subtract_continuum(
-                continuum_windows_kms=[(-500, -200)],
-                recession_velocity=NGC1068_V,
-            )
+            proc.subtract_continuum()
 
 
 # ---------------------------------------------------------------------------
@@ -183,25 +173,25 @@ class TestSubtractContinuum:
 
 class TestRemoveO34959:
     def test_returns_new_instance(self, proc_model: ProcessingImageModel):
-        result = proc_model.remove_o3_4959(recession_velocity=NGC1068_V)
+        result = proc_model.remove_o3_4959()
         assert result is not proc_model
 
     def test_header_o3corr_true(self, proc_model: ProcessingImageModel):
-        result = proc_model.remove_o3_4959(recession_velocity=NGC1068_V)
+        result = proc_model.remove_o3_4959()
         assert result.primary_header.get("O3CORR") is True
 
     def test_header_o3scale_stored(self, proc_model: ProcessingImageModel):
-        result = proc_model.remove_o3_4959(recession_velocity=NGC1068_V)
+        result = proc_model.remove_o3_4959()
         expected = 1.0 / oiii5007_oiii4959
         assert result.primary_header.get("O3SCALE") == pytest.approx(expected, rel=1e-4)
 
     def test_custom_scale(self, proc_model: ProcessingImageModel):
-        result = proc_model.remove_o3_4959(recession_velocity=NGC1068_V, scale=0.5)
+        result = proc_model.remove_o3_4959(scale=0.5)
         assert result.primary_header.get("O3SCALE") == pytest.approx(0.5)
 
     def test_4959_region_reduced(self, proc_model: ProcessingImageModel):
         """4959 近傍のピクセル値が除去後に減少すること."""
-        result = proc_model.remove_o3_4959(recession_velocity=NGC1068_V)
+        result = proc_model.remove_o3_4959()
         wavelength = proc_model.sci.wavelength
         z = NGC1068_V / c_kms
         lam4959_obs = oiii4959_stp * (1.0 + z)
@@ -212,7 +202,7 @@ class TestRemoveO34959:
             assert mean_after < mean_before
 
     def test_shape_unchanged(self, proc_model: ProcessingImageModel):
-        result = proc_model.remove_o3_4959(recession_velocity=NGC1068_V)
+        result = proc_model.remove_o3_4959()
         assert result.shape == proc_model.shape
 
 
@@ -223,65 +213,44 @@ class TestRemoveO34959:
 
 class TestClipVelocityRange:
     def test_returns_new_instance(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result is not proc_model
 
-    def test_wavelength_axis_reduced(
-        self, proc_model: ProcessingImageModel, proc_fits_shape: tuple[int, int]
-    ):
+    def test_wavelength_axis_reduced(self, proc_model: ProcessingImageModel):
         """velocity clipping 後に波長方向ピクセル数が減少すること."""
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result.shape[1] < proc_model.shape[1]
 
     def test_spatial_axis_unchanged(self, proc_model: ProcessingImageModel):
         """空間方向の行数は変わらないこと."""
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result.shape[0] == proc_model.shape[0]
 
     def test_header_vclip_true(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result.primary_header.get("VCLIP") is True
 
     def test_header_vclipmin_vclipmax(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500.0, v_max=2500.0, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500.0, v_max=2500.0)
         assert result.primary_header.get("VCLIPMIN") == pytest.approx(-2500.0)
         assert result.primary_header.get("VCLIPMAX") == pytest.approx(2500.0)
 
     def test_header_vreces_stored(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result.primary_header.get("VRECES") == pytest.approx(NGC1068_V)
 
     def test_header_vclipref_stored(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V,
-            rest_wavelength=oiii5007_stp,
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result.primary_header.get("VCLIPREF") == pytest.approx(oiii5007_stp)
 
     def test_header_vclipz_correct(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         expected_z = NGC1068_V / c_kms
         assert result.primary_header.get("VCLIPZ") == pytest.approx(expected_z, rel=1e-5)
 
     def test_wcs_crval1_updated(self, proc_model: ProcessingImageModel):
         """CRVAL1 が clipped 後の最初のピクセル波長に更新されること."""
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         new_wl = result.sci.wavelength
         assert new_wl is not None
         # clipped 後の wavelength[0] は元の全波長配列の部分集合
@@ -290,22 +259,16 @@ class TestClipVelocityRange:
         assert new_wl[0] >= orig_wl[0]
 
     def test_naxis1_updated_in_header(self, proc_model: ProcessingImageModel):
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result.sci.header.get("NAXIS1") == result.shape[1]
 
     def test_raises_when_no_pixels_in_range(self, proc_model: ProcessingImageModel):
         with pytest.raises(ValueError, match="ピクセルが存在しません"):
-            proc_model.clip_velocity_range(
-                v_min=1e6, v_max=2e6, recession_velocity=NGC1068_V
-            )
+            proc_model.clip_velocity_range(v_min=1e6, v_max=2e6)
 
     def test_write_fits_output_exists(self, proc_model: ProcessingImageModel, tmp_path: Path):
         """clip 後に write_fits でファイルが書き出されること."""
-        result = proc_model.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500, v_max=2500)
         out_path = result.write_fits(output_dir=tmp_path, overwrite=True)
         assert out_path.exists()
 
@@ -313,9 +276,7 @@ class TestClipVelocityRange:
         self, proc_model: ProcessingImageModel, tmp_path: Path
     ):
         """書き出した FITS の primary header に VCLIP キーワードが存在すること."""
-        result = proc_model.clip_velocity_range(
-            v_min=-2500.0, v_max=2500.0, recession_velocity=NGC1068_V
-        )
+        result = proc_model.clip_velocity_range(v_min=-2500.0, v_max=2500.0)
         out_path = result.write_fits(output_dir=tmp_path, overwrite=True)
         with fits.open(out_path) as hdul:
             hdr = hdul[0].header
@@ -336,13 +297,14 @@ class TestPlotContinuumFit:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        ax = proc_model.plot_continuum_fit(
-            slit_index=0,
-            continuum_windows_kms=[(-4000, -3200), (3000, 4000)],
-            recession_velocity=NGC1068_V,
-        )
+        result = proc_model.subtract_continuum()
+        ax = result.plot_continuum_fit(slit_index=0)
         assert ax is not None
         plt.close("all")
+
+    def test_raises_without_subtract_continuum(self, proc_model: ProcessingImageModel):
+        with pytest.raises(ValueError, match="continuum"):
+            proc_model.plot_continuum_fit(slit_index=0)
 
 
 # ---------------------------------------------------------------------------
@@ -351,35 +313,44 @@ class TestPlotContinuumFit:
 
 
 class TestProcessingImageCollection:
-    def test_from_readers(self, proc_fits_path: Path):
+    def test_setup(self, proc_fits_path: Path):
         col = ReaderCollection.from_paths([proc_fits_path])
-        ic = ProcessingImageCollection.from_readers(col)
+        ic = ProcessingImageCollection.setup(
+            col,
+            recession_velocity=NGC1068_V,
+            continuum_windows_kms=CONTINUUM_WINDOWS,
+        )
         assert len(ic) == 1
         assert isinstance(ic[0], ProcessingImageModel)
 
     def test_subtract_continuum_collection(self, proc_fits_path: Path):
         col = ReaderCollection.from_paths([proc_fits_path])
-        ic = ProcessingImageCollection.from_readers(col)
-        result = ic.subtract_continuum(
-            continuum_windows_kms=[(-4000, -3200), (3000, 4000)],
+        ic = ProcessingImageCollection.setup(
+            col,
             recession_velocity=NGC1068_V,
+            continuum_windows_kms=CONTINUUM_WINDOWS,
         )
+        result = ic.subtract_continuum()
         assert result[0].primary_header.get("CONTSUB") is True
 
     def test_clip_velocity_range_collection(self, proc_fits_path: Path):
         col = ReaderCollection.from_paths([proc_fits_path])
-        ic = ProcessingImageCollection.from_readers(col)
-        result = ic.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
+        ic = ProcessingImageCollection.setup(
+            col,
+            recession_velocity=NGC1068_V,
+            continuum_windows_kms=CONTINUUM_WINDOWS,
         )
+        result = ic.clip_velocity_range(v_min=-2500, v_max=2500)
         assert result[0].shape[1] < ic[0].shape[1]
 
     def test_write_fits_collection(self, proc_fits_path: Path, tmp_path: Path):
         col = ReaderCollection.from_paths([proc_fits_path])
-        ic = ProcessingImageCollection.from_readers(col)
-        clipped = ic.clip_velocity_range(
-            v_min=-2500, v_max=2500, recession_velocity=NGC1068_V
+        ic = ProcessingImageCollection.setup(
+            col,
+            recession_velocity=NGC1068_V,
+            continuum_windows_kms=CONTINUUM_WINDOWS,
         )
+        clipped = ic.clip_velocity_range(v_min=-2500, v_max=2500)
         paths = clipped.write_fits(output_dir=tmp_path, overwrite=True)
         assert len(paths) == 1
         assert paths[0].exists()

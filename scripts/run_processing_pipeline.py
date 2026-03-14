@@ -31,7 +31,7 @@ RECESSION_VELOCITY = 1148.0         # NGC1068 後退速度 [km/s]
 # OIII λ5007 観測波長を v=0 とした相対速度 [km/s] でウィンドウを指定
 # → 輝線（λ4959, λ5007）が重ならない領域を選ぶ
 CONTINUUM_WINDOWS_KMS = [
-    (-4000.0, -3200.0),
+    (-7000.0, -6000.0),
     (3000.0, 4000.0),
 ]
 
@@ -42,6 +42,10 @@ V_MAX = 2500.0
 # x2d（2D 幾何補正）を実行するか
 # _flt.fits を直接渡す場合は True、すでに x2d 済みなら False
 RUN_X2D = True
+
+# 画像保存
+SAVE_PICTURE = True
+SLIT_INDEX = 572
 
 # ------------------------------------------------------------------ #
 
@@ -60,20 +64,10 @@ result = pipeline.run(
     output_dir=OUTPUT_DIR,
     run_x2d=RUN_X2D,
     overwrite=True,
+    save_picture=SAVE_PICTURE,
+    slit_index=SLIT_INDEX,
 )
 
 print(f"Output ({len(result.output_paths)} files):")
 for p in result.output_paths:
     print(f"  {p}")
-
-# ------------------------------------------------------------------ #
-# 確認用プロット（必要に応じて slit_index を変更）
-# ------------------------------------------------------------------ #
-
-SLIT_INDEX = 10  # 空間方向の確認スリット行
-
-result.plot_continuum_fit(
-    slit_index=SLIT_INDEX,
-    continuum_windows_kms=CONTINUUM_WINDOWS_KMS,
-    recession_velocity=RECESSION_VELOCITY,
-)

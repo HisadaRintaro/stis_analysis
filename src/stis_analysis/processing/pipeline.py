@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import math
 import tempfile
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,7 +23,7 @@ import numpy as np
 from stis_analysis.core.fits_reader import ReaderCollection
 from stis_analysis.core.instrument import InstrumentModel
 from stis_analysis.processing.image import ProcessingImageCollection, ProcessingImageModel
-from stis_analysis.processing.wave_constants import c_kms, oiii5007_stp, oiii5007_oiii4959
+from stis_analysis.processing.wave_constants import oiii5007_stp, oiii5007_oiii4959
 
 
 @dataclass(frozen=True)
@@ -55,49 +56,33 @@ class ProcessingResult:
             f")"
         )
 
-    def plot_continuum_fit(
-        self,
+    @staticmethod
+    def save_fig(ax: np.ndarray, save_path: Path | str, title: str | None = None) -> None:
+        """Axes 配列から Figure を取得し、タイトルを設定して画像を保存・クローズする."""
+        fig = ax.flat[0].figure
+        if title:
+            fig.suptitle(title)
+        fig.savefig(save_path)
+        print(f"saved {save_path}")
+        plt.close(fig)
+
+    @staticmethod
+    def _plot_continuum_fit(
+        before: ProcessingImageCollection,
+        after: ProcessingImageCollection,
         slit_index: int,
-        continuum_windows_kms: list[tuple[float, float]],
-        recession_velocity: float,
-        rest_wavelength: float = oiii5007_stp,
-        degree: int = 1,
-        which: Literal["before", "after"] = "before",
-        o3_half_width_aa: float | None = None,
         save_dir: Path | str | None = None,
+        title: str | None = None,
     ) -> np.ndarray:
-        """連続光フィットを 3 列タイルで確認するプロットを生成する.
+        """before スペクトルに連続光フィットを重ねた 3 列タイルプロットを生成する.
 
-        Parameters
-        ----------
-        slit_index : int
-            確認するスリット行のインデックス（空間方向）
-        continuum_windows_kms : list[tuple[float, float]]
-            連続光ウィンドウ [km/s]
-        recession_velocity : float
-            銀河の後退速度 [km/s]
-        rest_wavelength : float, optional
-            基準静止波長 [Å]。デフォルト: oiii5007_stp
-        degree : int, optional
-            フィット多項式次数（デフォルト: 1）
-        which : {"before", "after"}, optional
-            プロットする画像コレクション（デフォルト: "before"）。
-            "before" は連続光差し引き前、"after" は全処理適用後。
-        o3_half_width_aa : float | None, optional
-            OIII λ4959 除去領域の半幅 [Å]。指定すると除去対象範囲を
-            シェードで表示する。None の場合は非表示（デフォルト）。
-        save_dir : Path | str | None, optional
-            保存先ディレクトリ。指定すると `continuum_fit_slit{slit_index}_{which}.png` として保存する。
-
-        Returns
-        -------
-        np.ndarray
-            Axes の 2D 配列（shape: (nrows, ncols)）
+        before 画像のスペクトルを波長軸で描画し、after 画像に格納された
+        連続光フィット情報（フィット線・ウィンドウ・OIII 位置）をアノテーションとして重ねる。
+        after.continuum が未設定（subtract_continuum() 未実行）の場合は ValueError。
         """
-        collection = self.before if which == "before" else self.after
-        n = len(collection.images)
+        n = len(before.images)
         if n == 0:
-            raise ValueError(f"'{which}' の画像が存在しません。")
+            raise ValueError("画像が存在しません。")
 
         ncols = min(n, 3)
         nrows = math.ceil(n / ncols)
@@ -109,24 +94,94 @@ class ProcessingResult:
         )
         axes_list = list(axes_2d.flat)
 
-        for ax, image in zip(axes_list, collection.images):
-            cast(ProcessingImageModel, image).plot_continuum_fit(
-                slit_index=slit_index,
-                continuum_windows_kms=continuum_windows_kms,
-                recession_velocity=recession_velocity,
-                rest_wavelength=rest_wavelength,
-                degree=degree,
-                o3_half_width_aa=o3_half_width_aa,
-                ax=ax,
+        for ax, before_img, after_img in zip(axes_list, before.images, after.images):
+            before_img.sci.plot_spectrum(slit_index, ax=ax,
+                                         color="steelblue", lw=0.8, label="spectrum (before)")
+            cast(ProcessingImageModel, after_img).plot_continuum_fit(
+                slit_index=slit_index, ax=ax
             )
+            ax.set_title(f"{before_img.filename} (slit={slit_index})")
 
         for ax in axes_list[n:]:
             ax.set_visible(False)
 
         plt.tight_layout()
-
+        title = title or "Continuum_Fit"
         if save_dir is not None:
-            fig.savefig(Path(save_dir) / f"continuum_fit_slit{slit_index}_{which}.png")
+            ProcessingResult.save_fig(axes_2d, Path(save_dir) / f"{title}_slit{slit_index}.png", title=title)
+
+        plt.show()
+        return axes_2d
+
+    def plot_continuum_fit(
+        self,
+        slit_index: int,
+        save_dir: Path | str | None = None,
+        title: str | None = None,
+    ) -> np.ndarray:
+        """before スペクトルに連続光フィットを重ねた 3 列タイルプロットを生成する.
+
+        Parameters
+        ----------
+        slit_index : int
+            確認するスリット行のインデックス（空間方向）
+        save_dir : Path | str | None, optional
+            保存先ディレクトリ。指定すると `{title}_slit{slit_index}.png` として保存する。
+        title : str | None, optional
+            プロットのタイトル。指定しない場合は `"Continuum_Fit"` を使用する。
+
+        Returns
+        -------
+        np.ndarray
+            Axes の 2D 配列（shape: (nrows, ncols)）
+        """
+        return ProcessingResult._plot_continuum_fit(
+            self.before, self.after, slit_index, save_dir, title
+        )
+
+    @staticmethod
+    def _plot_before_after(
+        before: ProcessingImageCollection,
+        after: ProcessingImageCollection,
+        slit_index: int,
+        labels: tuple[str, str] = ("before", "after"),
+        save_dir: Path | str | None = None,
+        title: str | None = None,
+    ) -> np.ndarray:
+        """処理前後のスペクトルを重ねて比較するプロットを生成する.
+
+        before と after のスペクトルを同一 Axes に波長軸で重ねて描画し、
+        3 列タイルで全画像を並べる。
+        """
+        n = len(before.images)
+        if n == 0:
+            raise ValueError("画像が存在しません。")
+
+        ncols = min(n, 3)
+        nrows = math.ceil(n / ncols)
+
+        fig, axes_2d = plt.subplots(
+            nrows, ncols,
+            figsize=(5 * ncols, 4 * nrows),
+            squeeze=False,
+        )
+        axes_list = list(axes_2d.flat)
+
+        for ax, img_before, img_after in zip(axes_list, before.images, after.images):
+            img_before.sci.plot_spectrum(slit_index, ax=ax,
+                                         color="steelblue", lw=0.8, alpha=0.8, label=labels[0])
+            img_after.sci.plot_spectrum(slit_index, ax=ax,
+                                        color="tomato", lw=0.8, alpha=0.8, label=labels[1])
+            ax.set_title(f"{img_before.filename} (slit={slit_index})")
+            ax.legend(fontsize="small")
+
+        for ax in axes_list[n:]:
+            ax.set_visible(False)
+
+        fig.tight_layout(rect=(0.0, 0.05, 1.0, 0.93))
+        title = title or "Before_After"
+        if save_dir is not None:
+            ProcessingResult.save_fig(axes_2d, Path(save_dir) / f"{title}_slit{slit_index}.png", title=title)
 
         plt.show()
         return axes_2d
@@ -134,84 +189,31 @@ class ProcessingResult:
     def plot_before_after(
         self,
         slit_index: int,
-        recession_velocity: float,
-        rest_wavelength: float = oiii5007_stp,
         labels: tuple[str, str] = ("before", "after"),
         save_dir: Path | str | None = None,
+        title: str | None = None,
     ) -> np.ndarray:
         """処理前後のスペクトルを重ねて比較するプロットを生成する.
-
-        before と after のスペクトルを同一 Axes に重ねて描画し、
-        3 列タイルで全画像を並べる。
 
         Parameters
         ----------
         slit_index : int
             確認するスリット行のインデックス（空間方向）
-        recession_velocity : float
-            銀河の後退速度 [km/s]
-        rest_wavelength : float, optional
-            速度 v=0 の基準静止波長 [Å]。デフォルト: oiii5007_stp
         labels : tuple[str, str], optional
             凡例ラベル（before, after の順）
         save_dir : Path | str | None, optional
-            保存先ディレクトリ。指定すると `before_after_slit{slit_index}.png` として保存する。
+            保存先ディレクトリ。指定すると `{title}_slit{slit_index}.png` として保存する。
+        title : str | None, optional
+            プロットのタイトル。指定しない場合は `"Before_After"` を使用する。
 
         Returns
         -------
         np.ndarray
             Axes の 2D 配列（shape: (nrows, ncols)）
         """
-        n = len(self.before.images)
-        if n == 0:
-            raise ValueError("画像が存在しません。")
-
-        ncols = min(n, 3)
-        nrows = math.ceil(n / ncols)
-
-        z = recession_velocity / c_kms
-        lambda_ref = rest_wavelength * (1.0 + z)
-
-        fig, axes_2d = plt.subplots(
-            nrows, ncols,
-            figsize=(5 * ncols, 4 * nrows),
-            squeeze=False,
+        return ProcessingResult._plot_before_after(
+            self.before, self.after, slit_index, labels, save_dir, title
         )
-        axes_list = list(axes_2d.flat)
-
-        for ax, img_before, img_after in zip(
-            axes_list, self.before.images, self.after.images
-        ):
-            wl_before = img_before.sci.wavelength
-            if wl_before is not None:
-                vel_before = c_kms * (wl_before / lambda_ref - 1.0)
-                ax.plot(vel_before, img_before.sci.data[slit_index, :],
-                        color="steelblue", lw=0.8, alpha=0.8, label=labels[0])
-
-            wl_after = img_after.sci.wavelength
-            if wl_after is not None:
-                vel_after = c_kms * (wl_after / lambda_ref - 1.0)
-                ax.plot(vel_after, img_after.sci.data[slit_index, :],
-                        color="tomato", lw=0.8, alpha=0.8, label=labels[1])
-
-            ax.set_xlabel("Velocity [km/s]")
-            ax.set_ylabel("Counts")
-            ax.set_title(
-                f"{img_before.filename} (slit={slit_index}, "
-                f"v_reces={recession_velocity} km/s)"
-            )
-            ax.legend(fontsize="small")
-
-        for ax in axes_list[n:]:
-            ax.set_visible(False)
-
-        plt.tight_layout()
-
-        if save_dir is not None:
-            fig.savefig(Path(save_dir) / f"before_after_slit{slit_index}.png")
-
-        plt.show()
-        return axes_2d
 
 
 @dataclass(frozen=True)
@@ -257,7 +259,7 @@ class ProcessingPipeline:
     v_min: float = -2500.0
     v_max: float = 2500.0
     o3_scale: float = 1.0 / oiii5007_oiii4959
-    o3_half_width_aa: float = 30.0
+    o3_half_width_aa: float = 40.0
     suffix: str = "_lac"
     extension: str = ".fits"
     depth: int = 1
@@ -289,6 +291,8 @@ class ProcessingPipeline:
         output_suffix: str = "_proc",
         overwrite: bool = False,
         run_x2d: bool = True,
+        save_picture: bool = False,
+        slit_index: int | None = None,
     ) -> ProcessingResult:
         """パイプラインを実行する.
 
@@ -305,6 +309,16 @@ class ProcessingPipeline:
         run_x2d : bool, optional
             True の場合 stistools.x2d を実行する（デフォルト: True）。
             False にするとファイルをそのまま読み込む（テスト用途）。
+        save_picture : bool, optional
+            True の場合、各処理ステップの確認プロットを output_dir に保存する（デフォルト: False）。
+            slit_index 指定時のみ有効。保存されるファイル:
+            - After_continuum_subtraction_slit{N}.png
+            - Continuum_Fit_slit{N}.png
+            - After_OIII_removal_slit{N}.png
+            - After_velocity_range_clipping_slit{N}.png
+        slit_index : int | None, optional
+            確認プロットに使用するスリット行インデックス。
+            save_picture=True のときのみ有効。
 
         Returns
         -------
@@ -312,7 +326,7 @@ class ProcessingPipeline:
             処理前後の ImageCollection と出力パスリスト
         """
         input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
+        output_dir = self._resolve_output_dir(Path(output_dir), output_suffix)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. ファイル探索
@@ -337,37 +351,30 @@ class ProcessingPipeline:
 
         # 3. ProcessingImageCollection として読み込み
         readers = ReaderCollection.from_paths(x2d_paths)
-        before = ProcessingImageCollection.from_readers(readers, dq_flags=self.dq_flags)
+        before = ProcessingImageCollection.setup(
+            readers,
+            recession_velocity=self.recession_velocity,
+            continuum_windows_kms=self.continuum_windows_kms,
+            rest_wavelength=self.rest_wavelength,
+            o3_half_width_aa=self.o3_half_width_aa,
+            dq_flags=self.dq_flags,
+        )
         print(f"Step 3: 読み込み完了 ({len(before.images)} images)")
 
         # 4. 連続光差し引き
-        after = before.subtract_continuum(
-            continuum_windows_kms=self.continuum_windows_kms,
-            recession_velocity=self.recession_velocity,
-            rest_wavelength=self.rest_wavelength,
-            degree=self.continuum_degree,
-        )
+        cont_subtracted = before.subtract_continuum(degree=self.continuum_degree)
         print("Step 4: 連続光差し引き完了")
 
         # 5. OIII λ4959 除去
-        after = after.remove_o3_4959(
-            recession_velocity=self.recession_velocity,
-            scale=self.o3_scale,
-            half_width_aa=self.o3_half_width_aa,
-        )
+        o3_removed = cont_subtracted.remove_o3_4959(scale=self.o3_scale)
         print("Step 5: OIII λ4959 除去完了")
 
         # 6. velocity range clipping
-        after = after.clip_velocity_range(
-            v_min=self.v_min,
-            v_max=self.v_max,
-            recession_velocity=self.recession_velocity,
-            rest_wavelength=self.rest_wavelength,
-        )
+        clipped = o3_removed.clip_velocity_range(v_min=self.v_min, v_max=self.v_max)
         print(f"Step 6: velocity clipping 完了 ({self.v_min} ~ {self.v_max} km/s)")
 
         # 7. _proc.fits として書き出し
-        output_paths = after.write_fits(
+        output_paths = clipped.write_fits(
             output_suffix=output_suffix,
             output_dir=output_dir,
             overwrite=overwrite,
@@ -376,11 +383,70 @@ class ProcessingPipeline:
             print(f"  wrote: {p}")
         print(f"Step 7: 書き出し完了 ({len(output_paths)} files)")
 
+        # 8. 確認用画像の保存
+        if save_picture:
+            if slit_index is None:
+                print("Step 8: slit_index が未指定のためプロット保存をスキップします。")
+            else:
+                ProcessingResult._plot_before_after(
+                    before, cont_subtracted, slit_index,
+                    save_dir=output_dir, title="After_continuum_subtraction",
+                )
+                ProcessingResult._plot_continuum_fit(
+                    before, cont_subtracted, slit_index,
+                    save_dir=output_dir, title="Continuum_Fit",
+                )
+                ProcessingResult._plot_before_after(
+                    cont_subtracted, o3_removed, slit_index,
+                    save_dir=output_dir, title="After_OIII_removal",
+                )
+                ProcessingResult._plot_before_after(
+                    o3_removed, clipped, slit_index,
+                    save_dir=output_dir, title="After_velocity_range_clipping",
+                )
+                print("Step 8: プロット保存完了")
+
         return ProcessingResult(
             before=before,
-            after=after,
+            after=clipped,
             output_paths=output_paths,
         )
+
+    @staticmethod
+    def _resolve_output_dir(base: Path, output_suffix: str) -> Path:
+        """output_dir に既存の出力ファイルがある場合、番号付きディレクトリを返す.
+
+        ``base`` に ``*{output_suffix}.fits`` が 1 件以上存在する場合は
+        ``{base}-2``, ``{base}-3``, ... と順に探し、
+        該当ファイルが存在しない最初のパスを返す。
+        存在しない or 空の場合はそのまま ``base`` を返す。
+
+        Parameters
+        ----------
+        base : Path
+            指定された出力先ディレクトリ
+        output_suffix : str
+            出力ファイルの接尾辞（例: "_proc"）
+
+        Returns
+        -------
+        Path
+            実際に使用するディレクトリパス
+        """
+        if not base.exists() or not any(base.glob(f"*{output_suffix}.fits")):
+            return base
+        n = 2
+        while True:
+            candidate = base.parent / f"{base.name}-{n}"
+            if not candidate.exists() or not any(candidate.glob(f"*{output_suffix}.fits")):
+                warnings.warn(
+                    f"'{base}' には既存の '{output_suffix}.fits' ファイルがあります。"
+                    f" '{candidate}' に保存します。",
+                    UserWarning,
+                    stacklevel=4,
+                )
+                return candidate
+            n += 1
 
     @staticmethod
     def _check_reference_files(lac_paths: list[Path]) -> None:
@@ -444,11 +510,32 @@ class ProcessingPipeline:
             )
 
     @staticmethod
+    def _x2d_path_for(lac_path: Path, output_dir: Path) -> Path:
+        """_lac.fits パスから x2d 出力パスを計算する.
+
+        Parameters
+        ----------
+        lac_path : Path
+            入力 _lac.fits ファイルパス
+        output_dir : Path
+            x2d 出力先ディレクトリ
+
+        Returns
+        -------
+        Path
+            対応する _x2d.fits の出力パス
+        """
+        return output_dir / lac_path.name.replace("_lac", "_x2d")
+
+    @staticmethod
     def _run_x2d_batch(
         lac_paths: list[Path],
         output_dir: Path,
     ) -> list[Path]:
         """_lac.fits のリストに stistools.x2d を一括実行する.
+
+        出力先に既存の _x2d.fits がある場合は x2d を実行せず、
+        既存ファイルのパスをそのまま返す。
 
         Parameters
         ----------
@@ -472,8 +559,11 @@ class ProcessingPipeline:
 
         x2d_paths: list[Path] = []
         for lac_path in lac_paths:
-            out_path = output_dir / lac_path.name.replace("_lac", "_x2d")
-            x2d_module.x2d(input=str(lac_path), output=str(out_path))
+            out_path = ProcessingPipeline._x2d_path_for(lac_path, output_dir)
+            if out_path.exists():
+                print(f"  skip x2d (already exists): {out_path.name}")
+            else:
+                x2d_module.x2d(input=str(lac_path), output=str(out_path))
             x2d_paths.append(out_path)
 
         return x2d_paths
