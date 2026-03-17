@@ -41,7 +41,7 @@ stis_analysis/
 │   │   ├── pipeline.py                ← ProcessingPipeline, ProcessingResult
 │   │   └── wave_constants.py          ← core.wave_constants の再エクスポート
 │   │
-│   └── reconstruct/                   ← Stage 3: 3D 再構成（実装予定）
+│   └── reconstruct/                   ← Stage 3: 3D 再構成
 │       ├── cube.py                    ← DataCube（raw/interpolated/reconstructed を統一）
 │       ├── velocity_field.py          ← VelocityField, LinearVelocityField, PowerLawVelocityField
 │       └── pipeline.py                ← ReconstructPipeline, ReconstructResult
@@ -51,7 +51,7 @@ stis_analysis/
 │   ├── run_lacosmic_pipeline.py       ← Stage 1 パイプライン一括実行
 │   ├── run_processing.py              ← Stage 2 ステップ確認（IPython 対話用）
 │   ├── run_processing_pipeline.py     ← Stage 2 パイプライン一括実行
-│   ├── run_reconstruct.py             ← Stage 3 パイプライン一括実行（実装予定）
+│   ├── run_reconstruct.py             ← Stage 3 パイプライン一括実行
 │   ├── check_lacosmic_residual.py     ← LA-Cosmic 残差確認
 │   └── convolve2d_reference.py        ← convolve2d 参考実装
 │
@@ -59,7 +59,7 @@ stis_analysis/
 │   ├── test_core/
 │   ├── test_lacosmic/
 │   ├── test_processing/               ← test_image.py, test_pipeline.py
-│   └── test_reconstruct/              ← test_cube.py, test_pipeline.py（実装予定）
+│   └── test_reconstruct/              ← （実装予定）
 │
 ├── pyproject.toml
 └── README.md
@@ -95,7 +95,7 @@ stis_analysis/
 | `ProcessingPipeline` | `_lac.fits` → x2d 補正 → 連続光差し引き → OIII λ4959 除去 → velocity clipping → `_proc.fits` 書き出しを一括実行 |
 | `ProcessingResult` | `before` / `after` の `ProcessingImageCollection` と出力パスリストを保持。`plot_before_after()` / `plot_continuum_fit()` でステップ確認プロットを生成 |
 
-#### `reconstruct`（実装予定）
+#### `reconstruct`
 
 | クラス | 説明 |
 |---|---|
@@ -132,8 +132,9 @@ stis_analysis/
 > **スコープ**: `processing` の責務は `_lac.fits` → `_proc.fits` 出力まで。
 > 3D Cube 結合・空間補間は Stage 3 で扱う。
 
-### Phase 3: Stage 3 開発（`reconstruct/`）
-- [ ] **3-1** `DataCube` の設計・実装（`cube.py`）
+### Phase 3: Stage 3 開発（`reconstruct/`） 🔄 進行中
+- [x] **3-0** `reconstruct/` サブパッケージのスケルトン作成（`cube.py`, `velocity_field.py`, `pipeline.py`, `scripts/run_reconstruct.py`）
+- [ ] **3-1** `DataCube` の実装（`cube.py`）
   - [ ] `from_proc_files()` — `_proc.fits` (×6) 読み込み・velocity軸変換・raw cube 構築
   - [ ] `interpolate()` — x方向をyピクセル間隔（0.05"/pix）に `np.interp` で補間
   - [ ] `compute_sigma_v()` — フラックス加重速度分散 σ_v マップ計算
