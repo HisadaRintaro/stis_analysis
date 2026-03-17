@@ -174,23 +174,59 @@ class DataCube:
     # 処理メソッド
     # ------------------------------------------------------------------
 
-    def interpolate(self, pixel_scale_arcsec: float = 0.05) -> "DataCube":
+    def interpolate(
+        self,
+        pixel_scale_arcsec: float = 0.05,
+        kind: str = "linear",
+    ) -> "DataCube":
         """x 方向を等間隔グリッドに補間する.
 
         `x_positions` の範囲を `pixel_scale_arcsec` 間隔で等間隔化し、
-        各 (y, v) スライスを `np.interp` で補間する。
+        `scipy.interpolate.interp1d(axis=0)` で x 軸方向を一括補間する。
+        y 軸・v 軸はすでに等間隔グリッドのため補間不要。
 
         Parameters
         ----------
         pixel_scale_arcsec : float, optional
             出力 x グリッドの間隔 [arcsec/pix]。デフォルト: 0.05
+        kind : str, optional
+            補間方法。'linear', 'cubic', 'quadratic' 等。デフォルト: 'linear'
 
         Returns
         -------
         DataCube
             interpolated ステージの DataCube（is_interpolated == True）
+
+        Raises
+        ------
+        ValueError
+            raw ステージでない場合
         """
-        raise NotImplementedError
+        from scipy.interpolate import interp1d
+
+        if not self.is_raw:
+            raise ValueError(
+                "interpolate() は raw ステージの DataCube でのみ使用できます。"
+            )
+
+        x_positions = self.x_positions  # shape: (n_slit,)
+        assert x_positions is not None  # guaranteed by is_raw check above
+
+        # 等間隔 x グリッドを生成
+        x_min, x_max = float(x_positions.min()), float(x_positions.max())
+        n_x = round((x_max - x_min) / pixel_scale_arcsec) + 1
+        x_grid = np.linspace(x_min, x_max, n_x)  # shape: (n_x,)
+
+        # axis=0 (x 軸) に沿って一括補間
+        f = interp1d(x_positions, self.data, axis=0, kind=kind)
+        interpolated = f(x_grid)  # shape: (n_x, n_y, n_v)
+
+        return replace(
+            self,
+            data=interpolated,
+            x_grid=x_grid,
+            x_positions=None,
+        )
 
     def compute_sigma_v(self) -> "VelocityField":  # type: ignore[name-defined]  # noqa: F821
         """フラックス加重速度分散 σ_v マップを計算する.

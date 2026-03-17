@@ -62,6 +62,11 @@ class ImageUnit:
     def crval1(self) -> float:
         """参照波長（CRVAL1）."""
         return cast(float, self.header.get("CRVAL1"))
+
+    @property
+    def crpix1(self) -> float:
+        """参照ピクセル（CRPIX1）."""
+        return cast(float, self.header.get("CRPIX1", 1.0))
     
     @property
     def unit(self) -> str:
@@ -80,12 +85,12 @@ class ImageUnit:
         np.ndarray
             波長配列 [Å]。WCS 情報が不足している場合は ValueError を投げる。
         """
-        crval1 = cast(float | None, self.header.get("CRVAL1"))
-        cdelt1 = cast(float | None, self.header.get("CDELT1", self.header.get("CD1_1")))
+        crval1 = self.crval1
+        cdelt1 = self.cdelt1
         if crval1 is None or cdelt1 is None:
             raise ValueError("SCI ヘッダーに WCS 情報（CRVAL1/CDELT1）がありません。")
-        crpix1 = cast(float, self.header.get("CRPIX1", 1.0))
-        n_pixels = self.data.shape[1]
+        crpix1 = self.crpix1
+        n_pixels = self.naxis1
         return crval1 + cdelt1 * (np.arange(n_pixels) - (crpix1 - 1))
 
     def velocity_array(
