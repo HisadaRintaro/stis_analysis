@@ -33,8 +33,9 @@ from pathlib import Path
 
 import numpy as np
 
-from stis_analysis.core.fits_reader import STISFitsReader
-from stis_analysis.core.wave_constants import c_kms, oiii5007_stp
+from stis_analysis.core.fits_reader import ReaderCollection
+from stis_analysis.core.wave_constants import oiii5007_stp
+from stis_analysis.lacosmic.image import ImageCollection
 
 
 @dataclass(frozen=True)
@@ -123,8 +124,51 @@ class DataCube:
         -------
         DataCube
             raw ステージの DataCube（is_raw == True）
+
+        Raises
+        ------
+        ValueError
+            paths と slit_positions の長さが一致しない場合、
+            paths が空の場合、またはスリット間でデータ形状が一致しない場合
         """
-        raise NotImplementedError
+        if len(paths) == 0:
+            raise ValueError("paths が空です。少なくとも 1 ファイルを指定してください。")
+        if len(paths) != len(slit_positions):
+            raise ValueError(
+                f"paths の長さ ({len(paths)}) と "
+                f"slit_positions の長さ ({len(slit_positions)}) が一致しません。"
+            )
+
+        readers = ReaderCollection.from_paths(paths)
+        collection = ImageCollection.from_readers(readers)
+
+        # 全スリットで共通の velocity_array を最初のモデルから計算
+        velocity_array = collection[0].sci.velocity_array(recession_velocity, rest_wavelength)
+
+        # 各スリットの SCI データを収集
+        slit_data_list = [img.sci.data for img in collection]
+
+        # スリット間でデータ形状が一致するか確認
+        shapes = [d.shape for d in slit_data_list]
+        if len(set(shapes)) != 1:
+            raise ValueError(
+                f"スリット間でデータ形状が一致しません: "
+                + ", ".join(f"{p.name}: {s}" for p, s in zip(paths, shapes))
+            )
+
+        # shape: (n_slit, n_y, n_v)
+        data = np.stack(slit_data_list, axis=0)
+
+        return cls(
+            data=data,
+            velocity_array=velocity_array,
+            recession_velocity=recession_velocity,
+            rest_wavelength=rest_wavelength,
+            x_positions=np.array(slit_positions),
+            x_grid=None,
+            z_array=None,
+            source_paths=tuple(paths),
+        )
 
     # ------------------------------------------------------------------
     # 処理メソッド
