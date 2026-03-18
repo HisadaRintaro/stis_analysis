@@ -67,6 +67,35 @@ class ImageUnit:
     def crpix1(self) -> float:
         """参照ピクセル（CRPIX1）."""
         return cast(float, self.header.get("CRPIX1", 1.0))
+
+    @property
+    def crval2(self) -> float:
+        """参照位置（CRVAL2）[arcsec]."""
+        return cast(float, self.header.get("CRVAL2", 0.0))
+
+    @property
+    def cdelt2(self) -> float:
+        """空間スケール/pixel（CDELT2 または CD2_2）[arcsec/pix]."""
+        return cast(float, self.header.get("CDELT2", self.header.get("CD2_2", 1.0)))
+
+    @property
+    def crpix2(self) -> float:
+        """参照ピクセル（CRPIX2）."""
+        return cast(float, self.header.get("CRPIX2", 1.0))
+
+    @property
+    def spatial_array(self) -> np.ndarray:
+        """ヘッダーの WCS キーワードから空間 y 軸配列を生成する.
+
+        CRVAL2（参照ピクセルの位置）と CDELT2（arcsec/pix）から
+        各ピクセルの空間位置を計算する。
+
+        Returns
+        -------
+        np.ndarray
+            空間位置配列 [arcsec]。shape: (naxis2,)
+        """
+        return self.crval2 + self.cdelt2 * (np.arange(self.naxis2) - (self.crpix2 - 1))
     
     @property
     def unit(self) -> str:

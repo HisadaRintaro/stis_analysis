@@ -18,11 +18,11 @@ raw / interpolated / reconstructed の全ステージを単一クラスで統一
     # 2. x 方向を等間隔グリッドに補間
     interp_cube = cube.interpolate(pixel_scale_arcsec=0.05)
 
-    # 3. フラックス加重速度分散 σ_v マップを計算
-    velocity_field = interp_cube.compute_sigma_v()
+    # 3. フラックス加重速度分散 σ_v を計算
+    v_mean, sigma_v = interp_cube.sigma_v
 
     # 4. k を設定して 3D 再構成
-    vf = velocity_field.with_k(k)
+    vf = LinearVelocityField(sigma_v=sigma_v, k=k)
     recon_cube = interp_cube.reconstruct(vf)
 """
 
@@ -61,6 +61,8 @@ class DataCube:
         raw ステージ: 各スリットの x 位置 [arcsec]。shape: (n_slit,)
     x_grid : np.ndarray | None
         interpolated ステージ: 等間隔 x 軸 [arcsec]。shape: (n_x,)
+    y_array : np.ndarray | None
+        空間 y 軸 [arcsec]。FITS ヘッダーの CRVAL2/CDELT2/CRPIX2 から計算。shape: (n_y,)
     z_array : np.ndarray | None
         reconstructed ステージ: 深度軸 [arcsec]。shape: (n_z,)
     source_paths : tuple[Path, ...] | None
@@ -73,6 +75,7 @@ class DataCube:
     rest_wavelength: float = oiii5007_stp
     x_positions: np.ndarray | None = None
     x_grid: np.ndarray | None = None
+    y_array: np.ndarray | None = None
     z_array: np.ndarray | None = None
     source_paths: tuple[Path, ...] | None = None
 
@@ -142,8 +145,11 @@ class DataCube:
         readers = ReaderCollection.from_paths(paths)
         collection = ImageCollection.from_readers(readers)
 
-        # 全スリットで共通の velocity_array を最初のモデルから計算
-        velocity_array = collection[0].sci.velocity_array(recession_velocity, rest_wavelength)
+        # 全スリットで共通の velocity_array / y_array を最初のモデルから計算
+        first_sci = collection[0].sci
+        velocity_array = first_sci.velocity_array(recession_velocity, rest_wavelength)
+
+        y_array = first_sci.spatial_array
 
         # 各スリットの SCI データを収集
         slit_data_list = [img.sci.data for img in collection]
@@ -166,9 +172,49 @@ class DataCube:
             rest_wavelength=rest_wavelength,
             x_positions=np.array(slit_positions),
             x_grid=None,
+            y_array=y_array,
             z_array=None,
             source_paths=tuple(paths),
         )
+
+    # ------------------------------------------------------------------
+    # 統計ヘルパー
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _flux_weighted_stats(
+        flux: np.ndarray,
+        array: np.ndarray,
+    ) -> tuple[float, float]:
+        """フラックス加重平均と加重標準偏差を計算する（全ピクセル総和）.
+
+        速度軸（v）だけでなく x, y, z 軸にも再利用可能な汎用ヘルパー。
+        `array` は `flux` にブロードキャスト可能な shape で渡す。
+
+        Parameters
+        ----------
+        flux : np.ndarray
+            フラックス配列。shape は任意。
+        array : np.ndarray
+            集計対象の軸の値（速度・位置など）。`flux` にブロードキャスト可能な shape。
+
+        Returns
+        -------
+        tuple[float, float]
+            (weighted_mean, weighted_sigma): 全ピクセルを対象としたスカラー値 [同単位]
+            総フラックスが 0 の場合は (np.nan, np.nan) を返す
+        """
+        w = np.where(flux > 0, flux, 0.0)  # 負フラックスをクリップ
+        total = float(w.sum())
+
+        if total == 0.0:
+            return float(np.nan), float(np.nan)
+
+        weighted_mean = float(np.sum(w * array) / total)
+        weighted_sigma = float(
+            np.sqrt(np.sum(w * (array - weighted_mean) ** 2) / total)
+        )
+        return weighted_mean, weighted_sigma
 
     # ------------------------------------------------------------------
     # 処理メソッド
@@ -228,23 +274,102 @@ class DataCube:
             x_positions=None,
         )
 
-    def compute_sigma_v(self) -> "VelocityField":  # type: ignore[name-defined]  # noqa: F821
-        """フラックス加重速度分散 σ_v マップを計算する.
+    @property
+    def sigma_v(self) -> tuple[float, float]:
+        """フラックス加重平均速度と速度分散 σ_v.
 
-        各 (x, y) ピクセルについてフラックス加重平均速度と速度分散を計算し、
-        `LinearVelocityField` として返す。
+        interpolated cube の全ピクセルにわたるフラックス加重統計をスカラーで返す。
 
         Returns
         -------
-        VelocityField
-            σ_v マップを持つ VelocityField（k は未設定 = np.nan）
+        tuple[float, float]
+            (v_mean, sigma_v): 全ピクセルを対象としたスカラー [km/s]
+            フラックスが 0 の場合は (np.nan, np.nan) を返す
 
         Raises
         ------
         ValueError
             `is_interpolated` でない場合
         """
-        raise NotImplementedError
+        if not self.is_interpolated:
+            raise ValueError(
+                "sigma_v は interpolated ステージの DataCube でのみ使用できます。"
+            )
+        # velocity_array shape (n_v,) → (n_x, n_y, n_v) に自動ブロードキャスト
+        return self._flux_weighted_stats(self.data, self.velocity_array)
+
+    @property
+    def sigma_x(self) -> tuple[float, float]:
+        """フラックス加重平均 x 位置と x 方向空間分散 σ_x.
+
+        reconstructed cube の全ピクセルにわたるフラックス加重統計をスカラーで返す。
+
+        Returns
+        -------
+        tuple[float, float]
+            (x_mean, sigma_x): 全ピクセルを対象としたスカラー [arcsec]
+
+        Raises
+        ------
+        ValueError
+            `is_reconstructed` でない場合
+        """
+        if not self.is_reconstructed:
+            raise ValueError(
+                "sigma_x は reconstructed ステージの DataCube でのみ使用できます。"
+            )
+        assert self.x_grid is not None
+        # x_grid shape (n_x,) → (n_x, 1, 1) に reshape してブロードキャスト
+        x = self.x_grid[:, np.newaxis, np.newaxis]
+        return self._flux_weighted_stats(self.data, x)
+
+    @property
+    def sigma_y(self) -> tuple[float, float]:
+        """フラックス加重平均 y 位置と y 方向空間分散 σ_y.
+
+        reconstructed cube の全ピクセルにわたるフラックス加重統計をスカラーで返す。
+
+        Returns
+        -------
+        tuple[float, float]
+            (y_mean, sigma_y): 全ピクセルを対象としたスカラー [arcsec]
+
+        Raises
+        ------
+        ValueError
+            `is_reconstructed` でない場合、または `y_array` が未設定の場合
+        """
+        if not self.is_reconstructed:
+            raise ValueError(
+                "sigma_y は reconstructed ステージの DataCube でのみ使用できます。"
+            )
+        if self.y_array is None:
+            raise ValueError(
+                "y_array が未設定です。FITS ヘッダーから y_array を設定してください。"
+            )
+        # y_array shape (n_y,) → (1, n_y, 1) に reshape してブロードキャスト
+        y = self.y_array[np.newaxis, :, np.newaxis]
+        return self._flux_weighted_stats(self.data, y)
+
+    @property
+    def sigma_z(self) -> float:
+        """深度分散 σ_z.
+
+        σ_z = sqrt(0.5 * (σ_x² + σ_y²))
+
+        Returns
+        -------
+        float
+            深度分散 σ_z [arcsec]
+
+        Raises
+        ------
+        ValueError
+            `is_reconstructed` でない場合、または `y_array` が未設定の場合
+        """
+        _, sx = self.sigma_x
+        _, sy = self.sigma_y
+        return float(np.sqrt(0.5 * (sx**2 + sy**2)))
 
     def reconstruct(self, velocity_field: "VelocityField") -> "DataCube":  # type: ignore[name-defined]  # noqa: F821
         """速度場モデルを用いて velocity 軸を depth 軸に変換する.
