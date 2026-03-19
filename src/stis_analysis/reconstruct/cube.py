@@ -306,7 +306,8 @@ class DataCube:
     def sigma_x(self) -> tuple[float, float]:
         """フラックス加重平均 x 位置と x 方向空間分散 σ_x.
 
-        reconstructed cube の全ピクセルにわたるフラックス加重統計をスカラーで返す。
+        interpolated / reconstructed ステージで使用可能。
+        視線方向に積分された輝線の空間的広がりを表す。
 
         Returns
         -------
@@ -316,13 +317,12 @@ class DataCube:
         Raises
         ------
         ValueError
-            `is_reconstructed` でない場合
+            `x_grid` が未設定（raw ステージ）の場合
         """
-        if not self.is_reconstructed:
+        if self.x_grid is None:
             raise ValueError(
-                "sigma_x は reconstructed ステージの DataCube でのみ使用できます。"
+                "sigma_x は x_grid が設定された DataCube でのみ使用できます（interpolated 以降）。"
             )
-        assert self.x_grid is not None
         # x_grid shape (n_x,) → (n_x, 1, 1) に reshape してブロードキャスト
         x = self.x_grid[:, np.newaxis, np.newaxis]
         return self._flux_weighted_stats(self.data, x)
@@ -331,7 +331,8 @@ class DataCube:
     def sigma_y(self) -> tuple[float, float]:
         """フラックス加重平均 y 位置と y 方向空間分散 σ_y.
 
-        reconstructed cube の全ピクセルにわたるフラックス加重統計をスカラーで返す。
+        interpolated / reconstructed ステージで使用可能。
+        視線方向に積分された輝線の空間的広がりを表す。
 
         Returns
         -------
@@ -341,12 +342,8 @@ class DataCube:
         Raises
         ------
         ValueError
-            `is_reconstructed` でない場合、または `y_array` が未設定の場合
+            `y_array` が未設定の場合
         """
-        if not self.is_reconstructed:
-            raise ValueError(
-                "sigma_y は reconstructed ステージの DataCube でのみ使用できます。"
-            )
         if self.y_array is None:
             raise ValueError(
                 "y_array が未設定です。FITS ヘッダーから y_array を設定してください。"
@@ -357,9 +354,10 @@ class DataCube:
 
     @property
     def sigma_z(self) -> float:
-        """深度分散 σ_z.
+        """深度方向の空間分散 σ_z の推定値.
 
-        σ_z = sqrt(0.5 * (σ_x² + σ_y²))
+        球対称を仮定し、σ_z = sqrt(0.5 * (σ_x² + σ_y²)) で導出する。
+        interpolated ステージで使用することで reconstruct 前に k を計算できる。
 
         Returns
         -------
@@ -369,7 +367,7 @@ class DataCube:
         Raises
         ------
         ValueError
-            `is_reconstructed` でない場合、または `y_array` が未設定の場合
+            `x_grid` または `y_array` が未設定の場合
         """
         _, sx = self.sigma_x
         _, sy = self.sigma_y

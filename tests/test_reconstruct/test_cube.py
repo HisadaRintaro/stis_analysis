@@ -168,37 +168,46 @@ class TestSigmaV:
 # ------------------------------------------------------------------
 
 class TestSigmaXYZ:
-    def test_sigma_x_returns_float_tuple(self, recon_cube: DataCube):
+    def test_sigma_x_works_on_interpolated(self, interp_cube: DataCube):
+        """sigma_x は interpolated ステージでも使用可能."""
+        x_mean, sigma_x = interp_cube.sigma_x
+        assert isinstance(x_mean, float)
+        assert isinstance(sigma_x, float)
+
+    def test_sigma_x_works_on_reconstructed(self, recon_cube: DataCube):
         x_mean, sigma_x = recon_cube.sigma_x
         assert isinstance(x_mean, float)
         assert isinstance(sigma_x, float)
 
-    def test_sigma_y_returns_float_tuple(self, recon_cube: DataCube):
+    def test_sigma_y_works_on_interpolated(self, interp_cube: DataCube):
+        """sigma_y は interpolated ステージでも使用可能."""
+        y_mean, sigma_y = interp_cube.sigma_y
+        assert isinstance(y_mean, float)
+        assert isinstance(sigma_y, float)
+
+    def test_sigma_y_works_on_reconstructed(self, recon_cube: DataCube):
         y_mean, sigma_y = recon_cube.sigma_y
         assert isinstance(y_mean, float)
         assert isinstance(sigma_y, float)
 
-    def test_sigma_z_returns_float(self, recon_cube: DataCube):
-        assert isinstance(recon_cube.sigma_z, float)
+    def test_sigma_z_works_on_interpolated(self, interp_cube: DataCube):
+        """sigma_z は interpolated ステージでも使用可能（reconstruct 前に k を計算できる）."""
+        assert isinstance(interp_cube.sigma_z, float)
 
-    def test_sigma_z_formula(self, recon_cube: DataCube):
+    def test_sigma_z_formula(self, interp_cube: DataCube):
         """sigma_z = sqrt(0.5 * (sigma_x^2 + sigma_y^2))."""
-        _, sx = recon_cube.sigma_x
-        _, sy = recon_cube.sigma_y
+        _, sx = interp_cube.sigma_x
+        _, sy = interp_cube.sigma_y
         expected = np.sqrt(0.5 * (sx**2 + sy**2))
-        assert recon_cube.sigma_z == pytest.approx(expected)
+        assert interp_cube.sigma_z == pytest.approx(expected)
 
-    def test_sigma_x_raises_when_not_reconstructed(self, interp_cube: DataCube):
-        with pytest.raises(ValueError, match="reconstructed ステージ"):
-            _ = interp_cube.sigma_x
-
-    def test_sigma_y_raises_when_not_reconstructed(self, interp_cube: DataCube):
-        with pytest.raises(ValueError, match="reconstructed ステージ"):
-            _ = interp_cube.sigma_y
+    def test_sigma_x_raises_when_raw(self, raw_cube: DataCube):
+        """raw ステージ（x_grid=None）では使用不可."""
+        with pytest.raises(ValueError, match="x_grid が設定"):
+            _ = raw_cube.sigma_x
 
     def test_sigma_y_raises_when_y_array_none(self, interp_cube: DataCube):
-        """y_array が未設定の場合 reconstruct 後も ValueError."""
-        vf = LinearVelocityField().with_k_from_sigmas(sigma_v=100.0, sigma_z=0.3)
+        """y_array が未設定の場合は ValueError."""
         cube_no_y = DataCube(
             data=interp_cube.data,
             velocity_array=interp_cube.velocity_array,
@@ -206,9 +215,8 @@ class TestSigmaXYZ:
             x_grid=interp_cube.x_grid,
             y_array=None,
         )
-        recon = cube_no_y.reconstruct(vf)
         with pytest.raises(ValueError, match="y_array が未設定"):
-            _ = recon.sigma_y
+            _ = cube_no_y.sigma_y
 
 
 # ------------------------------------------------------------------

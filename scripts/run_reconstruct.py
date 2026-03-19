@@ -4,8 +4,9 @@ IPython で `%run scripts/run_reconstruct.py` として実行する。
 
 使用前に以下の設定値を実際の値に変更してください:
   - SLIT_POSITIONS: 各スリットの x 位置 [arcsec]（FITSヘッダーから取得しない）
-  - SIGMA_Z       : 幾何モデルから推定した深度方向の空間分散 [arcsec]
-                    k はモデルと sigma_v から自動計算される（k = sigma_v / sigma_z）
+
+σ_z は interpolated cube の sigma_x / sigma_y から自動計算されます（球対称仮定）。
+k もモデルと σ_v / σ_z から自動計算されます。
 """
 
 from pathlib import Path
@@ -27,11 +28,6 @@ SLIT_POSITIONS: list[float] = [
     -0.125, -0.075, -0.025, 0.025, 0.075, 0.125,
 ]
 
-# 幾何モデルから推定した深度方向の空間分散 [arcsec]
-# k = sigma_v / sigma_z で自動計算される
-# TODO: 幾何モデルから推定した値に書き換えてください
-SIGMA_Z: float = float("nan")
-
 # 速度場モデル: "linear" or "power_law"
 VELOCITY_FIELD_MODEL = "linear"
 
@@ -45,7 +41,6 @@ SAVE_PICTURE = True
 
 pipeline = ReconstructPipeline(
     slit_positions=SLIT_POSITIONS,
-    sigma_z=SIGMA_Z,
     velocity_field_model=VELOCITY_FIELD_MODEL,
     recession_velocity=RECESSION_VELOCITY,
     pixel_scale_arcsec=PIXEL_SCALE_ARCSEC,

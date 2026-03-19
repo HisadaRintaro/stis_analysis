@@ -5,9 +5,9 @@ ProcessingPipeline / ProcessingResult パターンを踏襲する:
   2. DataCube.from_proc_files() — raw cube 構築
   3. DataCube.interpolate()     — x 方向補間
   4. DataCube.sigma_v           — フラックス加重速度分散 σ_v を取得
-  5. VelocityField.with_k_from_sigmas(sigma_v, sigma_z) — モデルから k を計算
-  6. DataCube.reconstruct(vf)   — 3D 再構成
-  7. DataCube.sigma_z           — 収束確認（必要に応じて反復）
+  5. DataCube.sigma_z           — 空間分散から深度分散 σ_z を推定（球対称仮定）
+  6. VelocityField.with_k_from_sigmas(sigma_v, sigma_z) — モデルから k を自動計算
+  7. DataCube.reconstruct(vf)   — 3D 再構成
   8. save_picture=True なら確認プロット保存
 """
 
@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-
-import numpy as np
 
 from stis_analysis.core.instrument import InstrumentModel
 from stis_analysis.core.wave_constants import oiii5007_stp
@@ -92,10 +90,6 @@ class ReconstructPipeline:
     ----------
     slit_positions : list[float]
         各スリットの x 位置 [arcsec]。FITSヘッダーから取得せず外部設定する。
-    sigma_z : float
-        幾何モデルから推定した深度方向の空間分散 [arcsec]。
-        VelocityField.with_k_from_sigmas() で k を計算する際に使用する。
-        デフォルト: np.nan（run() 実行前に必ず設定すること）
     velocity_field_model : str
         速度場モデル。"linear" または "power_law"。デフォルト: "linear"
     alpha : float
@@ -115,7 +109,6 @@ class ReconstructPipeline:
     """
 
     slit_positions: list[float]
-    sigma_z: float = np.nan
     velocity_field_model: str = "linear"
     alpha: float = 1.0
     recession_velocity: float = 1148.0
@@ -153,11 +146,66 @@ class ReconstructPipeline:
         Raises
         ------
         ValueError
-            `self.sigma_z` が np.nan の場合（run() 前に sigma_z= で設定が必要）
-        NotImplementedError
-            未実装
+            `slit_positions` の長さとファイル数が一致しない場合
         """
-        raise NotImplementedError
+        input_dir = Path(input_dir)
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. ファイル探索
+        instrument = InstrumentModel.load(
+            file_directory=str(input_dir),
+            suffix=self.suffix,
+            extension=".fits",
+            depth=self.depth,
+            exclude_files=self.exclude_files,
+        )
+        proc_paths = instrument.path_list
+        print(f"Step 1: Found {len(proc_paths)} files in {input_dir}")
+
+        # 2. slit_positions との整合チェック
+        if len(proc_paths) != len(self.slit_positions):
+            raise ValueError(
+                f"ファイル数 ({len(proc_paths)}) と slit_positions の長さ "
+                f"({len(self.slit_positions)}) が一致しません。"
+            )
+
+        # 3. raw cube 構築
+        raw_cube = DataCube.from_proc_files(
+            paths=proc_paths,
+            slit_positions=self.slit_positions,
+            recession_velocity=self.recession_velocity,
+            rest_wavelength=self.rest_wavelength,
+        )
+        print(f"Step 2: raw cube 構築完了  shape={raw_cube.data.shape}")
+
+        # 4. x 方向補間
+        interp_cube = raw_cube.interpolate(pixel_scale_arcsec=self.pixel_scale_arcsec)
+        print(f"Step 3: interpolate 完了  shape={interp_cube.data.shape}")
+
+        # 5. σ_v・σ_z を interpolated cube から計算
+        _, sigma_v = interp_cube.sigma_v
+        sigma_z = interp_cube.sigma_z
+        print(f"Step 4: sigma_v={sigma_v:.2f} km/s  sigma_z={sigma_z:.4f} arcsec")
+
+        # 6. VelocityField 構築（k をモデルから自動計算）
+        velocity_field = self._build_velocity_field(sigma_v, sigma_z)
+        print(f"Step 5: k={velocity_field.k:.4f} km/s/arcsec")
+
+        # 7. 3D 再構成
+        recon_cube = interp_cube.reconstruct(velocity_field)
+        print(f"Step 6: reconstruct 完了  shape={recon_cube.data.shape}")
+
+        # 8. 確認プロット（未実装のためスキップ）
+        if save_picture:
+            print("Step 7: 可視化メソッドは未実装のためスキップします。")
+
+        return ReconstructResult(
+            raw_cube=raw_cube,
+            interpolated_cube=interp_cube,
+            velocity_field=velocity_field,
+            reconstructed_cube=recon_cube,
+        )
 
     # ------------------------------------------------------------------
     # 内部ヘルパー
