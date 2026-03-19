@@ -4,10 +4,11 @@ ProcessingPipeline / ProcessingResult パターンを踏襲する:
   1. InstrumentModel でファイル探索
   2. DataCube.from_proc_files() — raw cube 構築
   3. DataCube.interpolate()     — x 方向補間
-  4. DataCube.compute_sigma_v() — σ_v マップ計算
-  5. VelocityField.with_k(k)    — 変換係数 k を設定
+  4. DataCube.sigma_v           — フラックス加重速度分散 σ_v を取得
+  5. VelocityField.with_k_from_sigmas(sigma_v, sigma_z) — モデルから k を計算
   6. DataCube.reconstruct(vf)   — 3D 再構成
-  7. save_picture=True なら確認プロット保存
+  7. DataCube.sigma_z           — 収束確認（必要に応じて反復）
+  8. save_picture=True なら確認プロット保存
 """
 
 from __future__ import annotations
@@ -52,18 +53,6 @@ class ReconstructResult:
     # 確認プロット
     # ------------------------------------------------------------------
 
-    def plot_sigma_v_map(self, ax=None, save_dir: Path | None = None):
-        """σ_v マップを 2D imshow で表示する.
-
-        Parameters
-        ----------
-        ax : matplotlib.axes.Axes, optional
-            描画先 Axes。None の場合は新規作成。
-        save_dir : Path, optional
-            保存先ディレクトリ。None の場合は保存しない。
-        """
-        raise NotImplementedError
-
     def plot_channel_map(self, v_index: int, ax=None, save_dir: Path | None = None):
         """指定速度インデックスのチャンネルマップを表示する.
 
@@ -103,8 +92,9 @@ class ReconstructPipeline:
     ----------
     slit_positions : list[float]
         各スリットの x 位置 [arcsec]。FITSヘッダーから取得せず外部設定する。
-    k : float
-        σ_v = k · σ_z の変換係数 [km/s / arcsec]。事前フィット済みの値を設定する。
+    sigma_z : float
+        幾何モデルから推定した深度方向の空間分散 [arcsec]。
+        VelocityField.with_k_from_sigmas() で k を計算する際に使用する。
         デフォルト: np.nan（run() 実行前に必ず設定すること）
     velocity_field_model : str
         速度場モデル。"linear" または "power_law"。デフォルト: "linear"
@@ -125,7 +115,7 @@ class ReconstructPipeline:
     """
 
     slit_positions: list[float]
-    k: float = np.nan
+    sigma_z: float = np.nan
     velocity_field_model: str = "linear"
     alpha: float = 1.0
     recession_velocity: float = 1148.0
@@ -163,7 +153,7 @@ class ReconstructPipeline:
         Raises
         ------
         ValueError
-            `self.k` が np.nan の場合（事前に with_k() または k= で設定が必要）
+            `self.sigma_z` が np.nan の場合（run() 前に sigma_z= で設定が必要）
         NotImplementedError
             未実装
         """
@@ -173,13 +163,13 @@ class ReconstructPipeline:
     # 内部ヘルパー
     # ------------------------------------------------------------------
 
-    def _build_velocity_field(self, sigma_v: np.ndarray, x_grid: np.ndarray) -> VelocityField:
-        """velocity_field_model に応じた VelocityField を構築する."""
+    def _build_velocity_field(self, sigma_v: float, sigma_z: float) -> VelocityField:
+        """velocity_field_model に応じた VelocityField を構築し k を設定する."""
         if self.velocity_field_model == "linear":
-            return LinearVelocityField(sigma_v=sigma_v, k=self.k, x_grid=x_grid)
+            return LinearVelocityField().with_k_from_sigmas(sigma_v, sigma_z)
         elif self.velocity_field_model == "power_law":
-            return PowerLawVelocityField(
-                sigma_v=sigma_v, k=self.k, x_grid=x_grid, alpha=self.alpha
+            return PowerLawVelocityField(alpha=self.alpha).with_k_from_sigmas(
+                sigma_v, sigma_z
             )
         else:
             raise ValueError(
