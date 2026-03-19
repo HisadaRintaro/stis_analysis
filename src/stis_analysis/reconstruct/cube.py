@@ -396,7 +396,34 @@ class DataCube:
         ValueError
             `is_interpolated` でない場合、または `velocity_field.k` が nan の場合
         """
-        raise NotImplementedError
+        from scipy.interpolate import interp1d
+
+        if not self.is_interpolated:
+            raise ValueError(
+                "reconstruct() は interpolated ステージの DataCube でのみ使用できます。"
+            )
+        if np.isnan(velocity_field.k):
+            raise ValueError(
+                "velocity_field.k が未設定です。"
+                "`with_k_from_sigmas()` または `with_k()` で設定してから呼び出してください。"
+            )
+
+        # 1. velocity → z 変換（power law では非等間隔になりうる）
+        z_values = velocity_field.velocity_to_depth(self.velocity_array)  # (n_v,)
+
+        # 2. 単調増加に並べ替え
+        sort_idx = np.argsort(z_values)
+        z_sorted = z_values[sort_idx]
+        data_sorted = self.data[:, :, sort_idx]  # (n_x, n_y, n_v)
+
+        # 3. 等間隔 z_grid に補間（点数は velocity_array と同じに維持）
+        z_grid = np.linspace(z_sorted[0], z_sorted[-1], len(z_sorted))
+        f = interp1d(z_sorted, data_sorted, axis=2, kind="linear",
+                     bounds_error=False, fill_value=0.0)
+        data_z = f(z_grid)  # (n_x, n_y, n_z)
+
+        # 4. reconstructed ステージへ遷移
+        return replace(self, data=data_z, z_array=z_grid)
 
     # ------------------------------------------------------------------
     # 可視化メソッド
