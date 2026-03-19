@@ -15,13 +15,14 @@ k の決定フロー:
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
 import numpy as np
 
 
 @dataclass(frozen=True)
-class VelocityField:
+class VelocityField(ABC):
     """速度場モデルの基底クラス.
 
     Attributes
@@ -75,6 +76,7 @@ class VelocityField:
     # k 計算（サブクラスで実装）
     # ------------------------------------------------------------------
 
+    @abstractmethod
     def compute_k(self, sigma_v: float, sigma_z: float) -> float:
         """σ_v と σ_z から変換係数 k を計算する.
 
@@ -91,18 +93,14 @@ class VelocityField:
         -------
         float
             変換係数 k [km/s / arcsec]
-
-        Raises
-        ------
-        NotImplementedError
-            サブクラスで未実装の場合
         """
-        raise NotImplementedError
+        ...
 
     # ------------------------------------------------------------------
     # v→z 変換（サブクラスで実装）
     # ------------------------------------------------------------------
 
+    @abstractmethod
     def velocity_to_depth(self, v: np.ndarray) -> np.ndarray:
         """速度 v [km/s] を深度 z [arcsec] に変換する.
 
@@ -120,15 +118,8 @@ class VelocityField:
         ------
         ValueError
             k が未設定（np.nan）の場合
-        NotImplementedError
-            サブクラスで未実装の場合
         """
-        if np.isnan(self.k):
-            raise ValueError(
-                "k が未設定です。`with_k_from_sigmas()` または `with_k()` で"
-                "変換係数を設定してから呼び出してください。"
-            )
-        raise NotImplementedError
+        ...
 
 
 @dataclass(frozen=True)
