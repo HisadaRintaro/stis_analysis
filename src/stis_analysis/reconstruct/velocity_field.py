@@ -1,14 +1,16 @@
 """VelocityField — 速度場モデル.
 
-フラックス加重速度分散マップ（σ_v）と v→z 変換係数 k を保持する。
-サブクラスで速度場モデル（v = k·z, v = k·z^α 等）を実装する。
+速度場の仮定によって constant k の計算式と v→z 変換式が変わるため、
+基底クラス + サブクラスで設計する。
 
 k の決定フロー:
-    1. DataCube.compute_sigma_v() → VelocityField (k=np.nan)
-    2. ユーザーが幾何モデルから σ_z を算出:
-         k = vf.sigma_v.mean() / sigma_z_expected
-    3. vf = vf.with_k(k)
+    1. DataCube.sigma_v → (v_mean, sigma_v: float)
+    2. DataCube.sigma_z → sigma_z: float  （sigma_x, sigma_y から導出）
+    3. vf = LinearVelocityField().with_k_from_sigmas(sigma_v, sigma_z)
     4. cube.reconstruct(vf)
+    5. 必要に応じて cube.sigma_z で収束確認・反復
+
+σ 値は DataCube が所有する。VelocityField はモデルの「式」だけを持つ。
 """
 
 from __future__ import annotations
@@ -24,30 +26,24 @@ class VelocityField:
 
     Attributes
     ----------
-    sigma_v : np.ndarray
-        フラックス加重速度分散マップ [km/s]。shape: (n_x, n_y)
     k : float
-        σ_v = k · σ_z の変換係数 [km/s / arcsec]。
-        外部フィット後に `with_k()` で設定する。デフォルト: np.nan（未設定）
-    x_grid : np.ndarray | None
-        x 軸グリッド [arcsec]。`DataCube.interpolate()` 後の x_grid と対応する。
+        v→z 変換係数 [km/s / arcsec]。
+        `with_k()` または `with_k_from_sigmas()` で設定する。デフォルト: np.nan（未設定）
     """
 
-    sigma_v: np.ndarray
     k: float = np.nan
-    x_grid: np.ndarray | None = None
 
     # ------------------------------------------------------------------
     # イミュータブル更新
     # ------------------------------------------------------------------
 
     def with_k(self, k: float) -> "VelocityField":
-        """変換係数 k を設定した新しい VelocityField を返す.
+        """変換係数 k を設定した新しいインスタンスを返す.
 
         Parameters
         ----------
         k : float
-            σ_v = k · σ_z の変換係数 [km/s / arcsec]
+            v→z 変換係数 [km/s / arcsec]
 
         Returns
         -------
@@ -56,8 +52,55 @@ class VelocityField:
         """
         return replace(self, k=k)
 
+    def with_k_from_sigmas(self, sigma_v: float, sigma_z: float) -> "VelocityField":
+        """σ_v と σ_z から k を計算して設定した新しいインスタンスを返す.
+
+        `compute_k()` をサブクラスの実装に委譲する。
+
+        Parameters
+        ----------
+        sigma_v : float
+            フラックス加重速度分散 [km/s]。`DataCube.sigma_v` の第 2 要素。
+        sigma_z : float
+            深度方向の空間分散 [arcsec]。`DataCube.sigma_z` から取得。
+
+        Returns
+        -------
+        VelocityField
+            k が設定された同型のサブクラスインスタンス
+        """
+        return self.with_k(self.compute_k(sigma_v, sigma_z))
+
     # ------------------------------------------------------------------
-    # 変換メソッド（サブクラスで実装）
+    # k 計算（サブクラスで実装）
+    # ------------------------------------------------------------------
+
+    def compute_k(self, sigma_v: float, sigma_z: float) -> float:
+        """σ_v と σ_z から変換係数 k を計算する.
+
+        速度場モデルの仮定によって計算式が異なるため、サブクラスで実装する。
+
+        Parameters
+        ----------
+        sigma_v : float
+            フラックス加重速度分散 [km/s]
+        sigma_z : float
+            深度方向の空間分散 [arcsec]
+
+        Returns
+        -------
+        float
+            変換係数 k [km/s / arcsec]
+
+        Raises
+        ------
+        NotImplementedError
+            サブクラスで未実装の場合
+        """
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # v→z 変換（サブクラスで実装）
     # ------------------------------------------------------------------
 
     def velocity_to_depth(self, v: np.ndarray) -> np.ndarray:
@@ -82,31 +125,36 @@ class VelocityField:
         """
         if np.isnan(self.k):
             raise ValueError(
-                "k が未設定です。`with_k(k)` で変換係数を設定してから呼び出してください。"
+                "k が未設定です。`with_k_from_sigmas()` または `with_k()` で"
+                "変換係数を設定してから呼び出してください。"
             )
         raise NotImplementedError
-
-    # ------------------------------------------------------------------
-    # 便利プロパティ
-    # ------------------------------------------------------------------
-
-    @property
-    def sigma_v_median(self) -> float:
-        """σ_v マップの中央値 [km/s]."""
-        return float(np.nanmedian(self.sigma_v))
-
-    @property
-    def sigma_v_mean(self) -> float:
-        """σ_v マップの平均値 [km/s]."""
-        return float(np.nanmean(self.sigma_v))
 
 
 @dataclass(frozen=True)
 class LinearVelocityField(VelocityField):
     """線形速度場モデル: v = k · z.
 
+    k の計算: k = σ_v / σ_z
     v → z 変換: z = v / k
     """
+
+    def compute_k(self, sigma_v: float, sigma_z: float) -> float:
+        """k = σ_v / σ_z を計算する.
+
+        Parameters
+        ----------
+        sigma_v : float
+            フラックス加重速度分散 [km/s]
+        sigma_z : float
+            深度方向の空間分散 [arcsec]
+
+        Returns
+        -------
+        float
+            変換係数 k [km/s / arcsec]
+        """
+        return sigma_v / sigma_z
 
     def velocity_to_depth(self, v: np.ndarray) -> np.ndarray:
         """v = k · z から z = v / k で深度に変換する.
@@ -128,7 +176,8 @@ class LinearVelocityField(VelocityField):
         """
         if np.isnan(self.k):
             raise ValueError(
-                "k が未設定です。`with_k(k)` で変換係数を設定してから呼び出してください。"
+                "k が未設定です。`with_k_from_sigmas()` または `with_k()` で"
+                "変換係数を設定してから呼び出してください。"
             )
         return v / self.k
 
@@ -137,7 +186,8 @@ class LinearVelocityField(VelocityField):
 class PowerLawVelocityField(VelocityField):
     """べき乗則速度場モデル: v = k · z^α.
 
-    v → z 変換: z = (v / k)^(1/α)
+    k の計算: k = σ_v / σ_z^α
+    v → z 変換: z = sign(v) · |v / k|^(1/α)
 
     Attributes
     ----------
@@ -147,8 +197,25 @@ class PowerLawVelocityField(VelocityField):
 
     alpha: float = 1.0
 
+    def compute_k(self, sigma_v: float, sigma_z: float) -> float:
+        """k = σ_v / σ_z^α を計算する.
+
+        Parameters
+        ----------
+        sigma_v : float
+            フラックス加重速度分散 [km/s]
+        sigma_z : float
+            深度方向の空間分散 [arcsec]
+
+        Returns
+        -------
+        float
+            変換係数 k [km/s / arcsec^α]
+        """
+        return sigma_v / sigma_z**self.alpha
+
     def velocity_to_depth(self, v: np.ndarray) -> np.ndarray:
-        """v = k · z^α から z = (v/k)^(1/α) で深度に変換する.
+        """v = k · z^α から z = sign(v) · |v/k|^(1/α) で深度に変換する.
 
         Parameters
         ----------
@@ -167,6 +234,7 @@ class PowerLawVelocityField(VelocityField):
         """
         if np.isnan(self.k):
             raise ValueError(
-                "k が未設定です。`with_k(k)` で変換係数を設定してから呼び出してください。"
+                "k が未設定です。`with_k_from_sigmas()` または `with_k()` で"
+                "変換係数を設定してから呼び出してください。"
             )
         return np.sign(v) * np.abs(v / self.k) ** (1.0 / self.alpha)

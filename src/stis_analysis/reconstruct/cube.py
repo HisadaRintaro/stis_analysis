@@ -18,12 +18,16 @@ raw / interpolated / reconstructed の全ステージを単一クラスで統一
     # 2. x 方向を等間隔グリッドに補間
     interp_cube = cube.interpolate(pixel_scale_arcsec=0.05)
 
-    # 3. フラックス加重速度分散 σ_v を計算
-    v_mean, sigma_v = interp_cube.sigma_v
+    # 3. フラックス加重速度分散 σ_v と深度分散 σ_z を取得
+    _, sigma_v = interp_cube.sigma_v
+    sigma_z = 0.3  # ユーザーが幾何から推定 [arcsec]
 
-    # 4. k を設定して 3D 再構成
-    vf = LinearVelocityField(sigma_v=sigma_v, k=k)
+    # 4. k をモデルから計算して 3D 再構成
+    vf = LinearVelocityField().with_k_from_sigmas(sigma_v, sigma_z)
     recon_cube = interp_cube.reconstruct(vf)
+
+    # 5. 再構成後の σ_z で収束確認
+    sigma_z_actual = recon_cube.sigma_z
 """
 
 from __future__ import annotations
