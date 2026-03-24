@@ -87,7 +87,8 @@ print(f"  velocity_array: [{raw_cube.velocity_array[0]:.1f}, ..., {raw_cube.velo
 interp_cube = raw_cube.interpolate(pixel_scale_arcsec=PIXEL_SCALE_ARCSEC)
 print(f"\nStep 3: interpolate 完了")
 print(f"  shape  : {interp_cube.data.shape}  (n_x, n_y, n_v)")
-print(f"  x_grid : [{interp_cube.x_grid[0]:.3f}, ..., {interp_cube.x_grid[-1]:.3f}] arcsec")
+assert interp_cube.x_array is not None
+print(f"  x_array: [{interp_cube.x_array[0]:.3f}, ..., {interp_cube.x_array[-1]:.3f}] arcsec")
 
 # ------------------------------------------------------------------ #
 # Step 4. σ_v・σ_z の計算

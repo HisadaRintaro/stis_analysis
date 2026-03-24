@@ -2,8 +2,8 @@
 
 raw / interpolated / reconstructed の全ステージを単一クラスで統一する。
 ステージはオプションフィールドの有無で判定する:
-  - raw          : x_positions が設定され x_grid が None
-  - interpolated : x_grid が設定され z_array が None
+  - raw          : x_positions が設定され x_array が None
+  - interpolated : x_array が設定され z_array が None
   - reconstructed: z_array が設定済み
 
 使用方法:
@@ -63,7 +63,7 @@ class DataCube:
         速度 v=0 の基準静止波長 [Å]。デフォルト: oiii5007_stp
     x_positions : np.ndarray | None
         raw ステージ: 各スリットの x 位置 [arcsec]。shape: (n_slit,)
-    x_grid : np.ndarray | None
+    x_array : np.ndarray | None
         interpolated ステージ: 等間隔 x 軸 [arcsec]。shape: (n_x,)
     y_array : np.ndarray | None
         空間 y 軸 [arcsec]。FITS ヘッダーの CRVAL2/CDELT2/CRPIX2 から計算。shape: (n_y,)
@@ -78,7 +78,7 @@ class DataCube:
     recession_velocity: float
     rest_wavelength: float = oiii5007_stp
     x_positions: np.ndarray | None = None
-    x_grid: np.ndarray | None = None
+    x_array: np.ndarray | None = None
     y_array: np.ndarray | None = None
     z_array: np.ndarray | None = None
     source_paths: tuple[Path, ...] | None = None
@@ -89,13 +89,13 @@ class DataCube:
 
     @property
     def is_raw(self) -> bool:
-        """raw ステージ（スリット位置は離散的）かどうか."""
-        return self.x_positions is not None and self.x_grid is None
+        """raw ステージ（x_positions あり・x_array なし）かどうか."""
+        return self.x_positions is not None and self.x_array is None
 
     @property
     def is_interpolated(self) -> bool:
-        """interpolated ステージ（x 軸が等間隔グリッド）かどうか."""
-        return self.x_grid is not None and self.z_array is None
+        """interpolated ステージ（x_array あり・z_array なし）かどうか."""
+        return self.x_array is not None and self.z_array is None
 
     @property
     def is_reconstructed(self) -> bool:
@@ -175,7 +175,7 @@ class DataCube:
             recession_velocity=recession_velocity,
             rest_wavelength=rest_wavelength,
             x_positions=np.array(slit_positions),
-            x_grid=None,
+            x_array=None,
             y_array=y_array,
             z_array=None,
             source_paths=tuple(paths),
@@ -265,16 +265,16 @@ class DataCube:
         # 等間隔 x グリッドを生成
         x_min, x_max = float(x_positions.min()), float(x_positions.max())
         n_x = round((x_max - x_min) / pixel_scale_arcsec) + 1
-        x_grid = np.linspace(x_min, x_max, n_x)  # shape: (n_x,)
+        x_array = np.linspace(x_min, x_max, n_x)  # shape: (n_x,)
 
         # axis=0 (x 軸) に沿って一括補間
         f = interp1d(x_positions, self.data, axis=0, kind=kind)
-        interpolated = f(x_grid)  # shape: (n_x, n_y, n_v)
+        interpolated = f(x_array)  # shape: (n_x, n_y, n_v)
 
         return replace(
             self,
             data=interpolated,
-            x_grid=x_grid,
+            x_array=x_array,
             x_positions=None,
         )
 
@@ -317,14 +317,14 @@ class DataCube:
         Raises
         ------
         ValueError
-            `x_grid` が未設定（raw ステージ）の場合
+            `x_array` が未設定（raw ステージ）の場合
         """
-        if self.x_grid is None:
+        if self.x_array is None:
             raise ValueError(
-                "sigma_x は x_grid が設定された DataCube でのみ使用できます（interpolated 以降）。"
+                "sigma_x は x_array が設定された DataCube でのみ使用できます（interpolated 以降）。"
             )
         # x_grid shape (n_x,) → (n_x, 1, 1) に reshape してブロードキャスト
-        x = self.x_grid[:, np.newaxis, np.newaxis]
+        x = self.x_array[:, np.newaxis, np.newaxis]
         return self._flux_weighted_stats(self.data, x)
 
     @property

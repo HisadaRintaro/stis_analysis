@@ -82,23 +82,23 @@ class TestStageFlags:
 # ------------------------------------------------------------------
 
 class TestInterpolate:
-    def test_output_shape_y_v_preserved(self, raw_cube: DataCube, interp_cube: DataCube):
+    def test_output_shape_y_v_preserved(self, interp_cube: DataCube):
         """y 軸・v 軸の次元数は変わらない."""
         assert interp_cube.data.shape[1] == N_Y
         assert interp_cube.data.shape[2] == N_V
 
-    def test_x_grid_is_set(self, interp_cube: DataCube):
-        assert interp_cube.x_grid is not None
+    def test_x_array_is_set(self, interp_cube: DataCube):
+        assert interp_cube.x_array is not None
 
     def test_x_positions_is_cleared(self, interp_cube: DataCube):
         assert interp_cube.x_positions is None
 
-    def test_x_grid_range(self, raw_cube: DataCube, interp_cube: DataCube):
-        """x_grid の範囲が x_positions と一致する."""
-        assert interp_cube.x_grid is not None
+    def test_x_array_range(self, raw_cube: DataCube, interp_cube: DataCube):
+        """x_array の範囲が x_positions と一致する."""
+        assert interp_cube.x_array is not None
         assert raw_cube.x_positions is not None
-        assert interp_cube.x_grid[0] == pytest.approx(raw_cube.x_positions.min())
-        assert interp_cube.x_grid[-1] == pytest.approx(raw_cube.x_positions.max())
+        assert interp_cube.x_array[0] == pytest.approx(raw_cube.x_positions.min())
+        assert interp_cube.x_array[-1] == pytest.approx(raw_cube.x_positions.max())
 
     def test_raises_when_not_raw(self, interp_cube: DataCube):
         with pytest.raises(ValueError, match="raw ステージ"):
@@ -156,11 +156,11 @@ class TestSigmaV:
 
     def test_raises_when_not_interpolated(self, raw_cube: DataCube):
         with pytest.raises(ValueError, match="interpolated ステージ"):
-            _ = raw_cube.sigma_v
+            raw_cube.sigma_v  # noqa: B018
 
     def test_raises_when_reconstructed(self, recon_cube: DataCube):
         with pytest.raises(ValueError, match="interpolated ステージ"):
-            _ = recon_cube.sigma_v
+            recon_cube.sigma_v  # noqa: B018
 
 
 # ------------------------------------------------------------------
@@ -202,9 +202,9 @@ class TestSigmaXYZ:
         assert interp_cube.sigma_z == pytest.approx(expected)
 
     def test_sigma_x_raises_when_raw(self, raw_cube: DataCube):
-        """raw ステージ（x_grid=None）では使用不可."""
-        with pytest.raises(ValueError, match="x_grid が設定"):
-            _ = raw_cube.sigma_x
+        """raw ステージ（x_array=None）では使用不可."""
+        with pytest.raises(ValueError, match="x_array が設定"):
+            raw_cube.sigma_x  # noqa: B018
 
     def test_sigma_y_raises_when_y_array_none(self, interp_cube: DataCube):
         """y_array が未設定の場合は ValueError."""
@@ -212,11 +212,11 @@ class TestSigmaXYZ:
             data=interp_cube.data,
             velocity_array=interp_cube.velocity_array,
             recession_velocity=RECESSION_VELOCITY,
-            x_grid=interp_cube.x_grid,
+            x_array=interp_cube.x_array,
             y_array=None,
         )
         with pytest.raises(ValueError, match="y_array が未設定"):
-            _ = cube_no_y.sigma_y
+            cube_no_y.sigma_y  # noqa: B018
 
 
 # ------------------------------------------------------------------
