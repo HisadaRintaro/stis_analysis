@@ -127,4 +127,5 @@ print(f"  k       : {velocity_field.k:.4f} km/s/arcsec")
 recon_cube = interp_cube.reconstruct(velocity_field)
 print(f"\nStep 6: reconstruct 完了")
 print(f"  shape   : {recon_cube.data.shape}  (n_x, n_y, n_z)")
+assert recon_cube.z_array is not None
 print(f"  z_array : [{recon_cube.z_array[0]:.3f}, ..., {recon_cube.z_array[-1]:.3f}] arcsec")
