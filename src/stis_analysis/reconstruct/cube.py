@@ -103,6 +103,48 @@ class DataCube:
         return self.z_array is not None
 
     # ------------------------------------------------------------------
+    # repr
+    # ------------------------------------------------------------------
+
+    def __repr__(self) -> str:
+        if self.is_raw:
+            stage = "raw"
+            shape_label = "(n_slit, n_y, n_v)"
+        elif self.is_interpolated:
+            stage = "interpolated"
+            shape_label = "(n_x, n_y, n_v)"
+        else:
+            stage = "reconstructed"
+            shape_label = "(n_x, n_y, n_z)"
+
+        def _arr_summary(arr: np.ndarray, unit: str) -> str:
+            if len(arr) <= 6:
+                vals = ", ".join(f"{v:.3f}" for v in arr)
+                return f"[{vals}] {unit}  ({len(arr)} pts)"
+            return f"[{arr[0]:.3f}, ..., {arr[-1]:.3f}] {unit}  ({len(arr)} pts)"
+
+        lines = [
+            "DataCube(",
+            f"  stage    : {stage}",
+            f"  shape    : {self.data.shape}  {shape_label}",
+        ]
+        if self.is_raw and self.x_positions is not None:
+            lines.append(f"  x_pos    : {_arr_summary(self.x_positions, 'arcsec')}")
+        elif self.x_array is not None:
+            lines.append(f"  x_array  : {_arr_summary(self.x_array, 'arcsec')}")
+        if self.y_array is not None:
+            lines.append(f"  y_array  : {_arr_summary(self.y_array, 'arcsec')}")
+        lines.append(f"  velocity : {_arr_summary(self.velocity_array, 'km/s')}")
+        if self.z_array is not None:
+            lines.append(f"  z_array  : {_arr_summary(self.z_array, 'arcsec')}")
+        lines += [
+            f"  v_rec    : {self.recession_velocity:.1f} km/s",
+            f"  λ_rest   : {self.rest_wavelength:.3f} Å",
+            ")",
+        ]
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
     # コンストラクタ
     # ------------------------------------------------------------------
 
@@ -220,64 +262,6 @@ class DataCube:
         )
         return weighted_mean, weighted_sigma
 
-    # ------------------------------------------------------------------
-    # 処理メソッド
-    # ------------------------------------------------------------------
-
-    def interpolate(
-        self,
-        pixel_scale_arcsec: float = 0.05,
-        kind: str = "linear",
-    ) -> "DataCube":
-        """x 方向を等間隔グリッドに補間する.
-
-        `x_positions` の範囲を `pixel_scale_arcsec` 間隔で等間隔化し、
-        `scipy.interpolate.interp1d(axis=0)` で x 軸方向を一括補間する。
-        y 軸・v 軸はすでに等間隔グリッドのため補間不要。
-
-        Parameters
-        ----------
-        pixel_scale_arcsec : float, optional
-            出力 x グリッドの間隔 [arcsec/pix]。デフォルト: 0.05
-        kind : str, optional
-            補間方法。'linear', 'cubic', 'quadratic' 等。デフォルト: 'linear'
-
-        Returns
-        -------
-        DataCube
-            interpolated ステージの DataCube（is_interpolated == True）
-
-        Raises
-        ------
-        ValueError
-            raw ステージでない場合
-        """
-        from scipy.interpolate import interp1d
-
-        if not self.is_raw:
-            raise ValueError(
-                "interpolate() は raw ステージの DataCube でのみ使用できます。"
-            )
-
-        x_positions = self.x_positions  # shape: (n_slit,)
-        assert x_positions is not None  # guaranteed by is_raw check above
-
-        # 等間隔 x グリッドを生成
-        x_min, x_max = float(x_positions.min()), float(x_positions.max())
-        n_x = round((x_max - x_min) / pixel_scale_arcsec) + 1
-        x_array = np.linspace(x_min, x_max, n_x)  # shape: (n_x,)
-
-        # axis=0 (x 軸) に沿って一括補間
-        f = interp1d(x_positions, self.data, axis=0, kind=kind)
-        interpolated = f(x_array)  # shape: (n_x, n_y, n_v)
-
-        return replace(
-            self,
-            data=interpolated,
-            x_array=x_array,
-            x_positions=None,
-        )
-
     @property
     def sigma_v(self) -> tuple[float, float]:
         """フラックス加重平均速度と速度分散 σ_v.
@@ -372,6 +356,64 @@ class DataCube:
         _, sx = self.sigma_x
         _, sy = self.sigma_y
         return float(np.sqrt(0.5 * (sx**2 + sy**2)))
+
+    # ------------------------------------------------------------------
+    # 処理メソッド
+    # ------------------------------------------------------------------
+
+    def interpolate(
+        self,
+        pixel_scale_arcsec: float = 0.05,
+        kind: str = "linear",
+    ) -> "DataCube":
+        """x 方向を等間隔グリッドに補間する.
+
+        `x_positions` の範囲を `pixel_scale_arcsec` 間隔で等間隔化し、
+        `scipy.interpolate.interp1d(axis=0)` で x 軸方向を一括補間する。
+        y 軸・v 軸はすでに等間隔グリッドのため補間不要。
+
+        Parameters
+        ----------
+        pixel_scale_arcsec : float, optional
+            出力 x グリッドの間隔 [arcsec/pix]。デフォルト: 0.05
+        kind : str, optional
+            補間方法。'linear', 'cubic', 'quadratic' 等。デフォルト: 'linear'
+
+        Returns
+        -------
+        DataCube
+            interpolated ステージの DataCube（is_interpolated == True）
+
+        Raises
+        ------
+        ValueError
+            raw ステージでない場合
+        """
+        from scipy.interpolate import interp1d
+
+        if not self.is_raw:
+            raise ValueError(
+                "interpolate() は raw ステージの DataCube でのみ使用できます。"
+            )
+
+        x_positions = self.x_positions  # shape: (n_slit,)
+        assert x_positions is not None  # guaranteed by is_raw check above
+
+        # 等間隔 x グリッドを生成
+        x_min, x_max = float(x_positions.min()), float(x_positions.max())
+        n_x = round((x_max - x_min) / pixel_scale_arcsec) + 1
+        x_array = np.linspace(x_min, x_max, n_x)  # shape: (n_x,)
+
+        # axis=0 (x 軸) に沿って一括補間
+        f = interp1d(x_positions, self.data, axis=0, kind=kind)
+        interpolated = f(x_array)  # shape: (n_x, n_y, n_v)
+
+        return replace(
+            self,
+            data=interpolated,
+            x_array=x_array,
+            x_positions=None,
+        )
 
     def reconstruct(self, velocity_field: "VelocityField") -> "DataCube":  # type: ignore[name-defined]  # noqa: F821
         """速度場モデルを用いて velocity 軸を depth 軸に変換する.
