@@ -24,11 +24,16 @@ processing = [
     "scipy>=1.13",
     "crds>=12.0",
 ]
+reconstruct = [
+    "scipy>=1.13",
+    "pyvista>=0.44",
+]
 all = [
     "lacosmic>=1.4.0",
     "scipy>=1.13",
     "stistools>=1.4.7",
     "crds>=12.0",
+    "pyvista>=0.44",
 ]
 
 [tool.poetry]
@@ -43,6 +48,7 @@ ipython = "^9.10.0"
 pyright = "^1.1.408"
 stistools = "^1.4.7"
 crds = "^13.1.10"
+pyvista = "^0.47.1"
 
 
 [tool.pytest.ini_options]
