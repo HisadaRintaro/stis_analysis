@@ -134,21 +134,21 @@ stis_analysis/
 
 ### Phase 3: Stage 3 開発（`reconstruct/`） 🔄 進行中
 - [x] **3-0** `reconstruct/` サブパッケージのスケルトン作成（`cube.py`, `velocity_field.py`, `pipeline.py`, `scripts/run_reconstruct.py`）
-- [ ] **3-1** `DataCube` の実装（`cube.py`）
-  - [ ] `from_proc_files()` — `_proc.fits` (×6) 読み込み・velocity軸変換・raw cube 構築
-  - [ ] `interpolate()` — x方向をyピクセル間隔（0.05"/pix）に `np.interp` で補間
-  - [ ] `compute_sigma_v()` — フラックス加重速度分散 σ_v マップ計算
-  - [ ] `reconstruct(velocity_field)` — `velocity_field.velocity_to_depth(v)` で velocity→z 軸変換
-  - [ ] 可視化メソッド（`imshow_channel`, `plot_spectrum`, `imshow_integrated`）
-- [ ] **3-2** `VelocityField` の設計・実装（`velocity_field.py`）
-  - [ ] 基底クラス `VelocityField`（σ_v map, k, `velocity_to_depth()` インターフェース）
-  - [ ] `LinearVelocityField` — v = k·z モデル
-  - [ ] `PowerLawVelocityField` — v = k·z^α モデル
-- [ ] **3-3** `ReconstructPipeline` / `ReconstructResult` の実装（`pipeline.py`）
-  - [ ] `ReconstructPipeline.run()` — ファイル探索 → DataCube構築 → 補間 → σ_v → 再構成
-  - [ ] `ReconstructResult` 確認プロット（`plot_sigma_v_map`, `plot_channel_map`, `plot_reconstructed_slice`）
-- [ ] **3-4** `scripts/run_reconstruct.py` の整備
-- [ ] **3-5** `reconstruct/` のテスト整備（`test_cube.py`, `test_pipeline.py`）
+- [x] **3-1** `DataCube` の実装（`cube.py`）
+  - [x] `from_proc_files()` — `_proc.fits` (×6) 読み込み・velocity軸変換・raw cube 構築
+  - [x] `interpolate()` — x方向をyピクセル間隔（0.05"/pix）に `scipy.interpolate.interp1d` で補間
+  - [x] `sigma_v` / `sigma_x` / `sigma_y` / `sigma_z` — フラックス加重統計プロパティ（interpolated ステージ以降）
+  - [x] `reconstruct(velocity_field)` — `velocity_field.velocity_to_depth(v)` で velocity→z 軸変換
+  - [ ] 可視化メソッド（`imshow_channel`, `plot_spectrum`, `imshow_integrated`）— pyvista 検証待ち
+- [x] **3-2** `VelocityField` の設計・実装（`velocity_field.py`）
+  - [x] 抽象基底クラス `VelocityField`（ABC）— `compute_k()`, `velocity_to_depth()` を抽象メソッドとして定義
+  - [x] `LinearVelocityField` — v = k·z モデル（k = σ_v / σ_z）
+  - [x] `PowerLawVelocityField` — v = k·z^α モデル（k = σ_v / σ_z^α）
+- [x] **3-3** `ReconstructPipeline` / `ReconstructResult` の実装（`pipeline.py`）
+  - [x] `ReconstructPipeline.run()` — ファイル探索 → DataCube 構築 → 補間 → σ_z 自動計算 → 3D 再構成
+  - [ ] `ReconstructResult` 確認プロット（`plot_channel_map`, `plot_reconstructed_slice`）— pyvista 検証待ち
+- [x] **3-4** `scripts/run_reconstruct.py` / `run_reconstruct_pipeline.py` の整備
+- [x] **3-5** `reconstruct/` のテスト整備（`test_cube.py`, `test_pipeline.py`、計80ケース）
 
 ### Phase 4: `BaseImageModel` 抽出 (将来)
 - [ ] `processing/` 安定後に `core/image.py` へ共通基底クラスを抽出
@@ -258,10 +258,16 @@ pip install "stis-analysis[all]"
 
 ```toml
 [project.optional-dependencies]
-lacosmic = ["lacosmic>=1.4.0"]
-processing = ["stistools>=1.4.7", "scipy>=1.17.0"]
-all = ["stis-analysis[lacosmic,processing]"]
+lacosmic    = ["lacosmic>=1.4.0", "scipy>=1.13"]
+processing  = ["stistools>=1.4.7", "scipy>=1.13", "crds>=12.0"]
+reconstruct = ["scipy>=1.13", "pyvista>=0.44"]
+all         = ["lacosmic>=1.4.0", "scipy>=1.13", "stistools>=1.4.7", "crds>=12.0", "pyvista>=0.44"]
 ```
+
+> **可視化ライブラリについて**
+> 当初は mayavi を予定していたが、stis_tools との依存コンフリクトおよび Python 3.13 + 新 VTK 環境でのビルド失敗により採用を見送った。
+> 現在は **pyvista** および **napari** を評価中。VTK 依存の問題が再現する場合は、
+> 処理パイプライン（lacosmic + processing）と再構成・可視化を別パッケージに分割することも検討する（→ [#20](https://github.com/HisadaRintaro/stis_analysis/issues/20)）。
 
 ---
 
