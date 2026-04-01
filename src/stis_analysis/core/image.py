@@ -70,12 +70,12 @@ class ImageUnit:
 
     @property
     def crval2(self) -> float:
-        """参照位置（CRVAL2）[arcsec]."""
+        """参照位置（CRVAL2）。単位は cunit2 に依存。"""
         return cast(float, self.header.get("CRVAL2", 0.0))
 
     @property
     def cdelt2(self) -> float:
-        """空間スケール/pixel（CDELT2 または CD2_2）[arcsec/pix]."""
+        """空間スケール/pixel（CDELT2 または CD2_2）。単位は cunit2 に依存。"""
         return cast(float, self.header.get("CDELT2", self.header.get("CD2_2", 1.0)))
 
     @property
@@ -84,18 +84,39 @@ class ImageUnit:
         return cast(float, self.header.get("CRPIX2", 1.0))
 
     @property
-    def spatial_array(self) -> np.ndarray:
-        """ヘッダーの WCS キーワードから空間 y 軸配列を生成する.
+    def cunit1(self) -> str:
+        """波長軸の単位（CUNIT1）。記述がない場合は空文字列。"""
+        return cast(str, self.header.get("CUNIT1", ""))
 
-        CRVAL2（参照ピクセルの位置）と CDELT2（arcsec/pix）から
-        各ピクセルの空間位置を計算する。
+    @property
+    def cunit2(self) -> str:
+        """空間軸の単位（CUNIT2）。記述がない場合は空文字列。"""
+        return cast(str, self.header.get("CUNIT2", ""))
+
+    @property
+    def spatial_array(self) -> np.ndarray:
+        """ヘッダーの WCS キーワードから空間 y 軸配列を生成する [arcsec].
+
+        CRVAL2 / CDELT2（または CD2_2）から各ピクセルの空間位置を計算する。
+        CUNIT2 が "deg" または "degree" の場合は arcsec に変換する（× 3600）。
+        CUNIT2 の記述がない場合、CD2_2 が存在すれば degrees と判定して変換する。
 
         Returns
         -------
         np.ndarray
             空間位置配列 [arcsec]。shape: (naxis2,)
         """
-        return self.crval2 + self.cdelt2 * (np.arange(self.naxis2) - (self.crpix2 - 1))
+        raw = self.crval2 + self.cdelt2 * (np.arange(self.naxis2) - (self.crpix2 - 1))
+
+        unit = self.cunit2.lower().strip()
+        if unit in ("deg", "degree", "degrees"):
+            return raw * 3600.0
+
+        # CUNIT2 未記述かつ CD2_2 が存在する場合は degrees と判定
+        if unit == "" and "CD2_2" in self.header:
+            return raw * 3600.0
+
+        return raw
     
     @property
     def unit(self) -> str:
