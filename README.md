@@ -51,7 +51,8 @@ stis_analysis/
 │   ├── run_lacosmic_pipeline.py       ← Stage 1 パイプライン一括実行
 │   ├── run_processing.py              ← Stage 2 ステップ確認（IPython 対話用）
 │   ├── run_processing_pipeline.py     ← Stage 2 パイプライン一括実行
-│   ├── run_reconstruct.py             ← Stage 3 パイプライン一括実行
+│   ├── run_reconstruct.py             ← Stage 3 ステップ確認（IPython 対話用）
+│   ├── run_reconstruct_pipeline.py    ← Stage 3 パイプライン一括実行
 │   ├── check_lacosmic_residual.py     ← LA-Cosmic 残差確認
 │   └── convolve2d_reference.py        ← convolve2d 参考実装
 │
@@ -99,7 +100,7 @@ stis_analysis/
 
 | クラス | 説明 |
 |---|---|
-| `DataCube` | raw / interpolated / reconstructed の全ステージを統一した 3D スペクトルキューブ。`from_proc_files()` → `interpolate()` → `compute_sigma_v()` → `reconstruct(velocity_field)` をチェーンで適用できる |
+| `DataCube` | raw / interpolated / reconstructed の全ステージを統一した 3D スペクトルキューブ。`from_proc_files()` → `interpolate()` → `reconstruct(velocity_field)` → `view_3d()` をチェーンで適用できる |
 | `VelocityField` | フラックス加重速度分散マップ（σ_v）と変換係数 k を保持する基底クラス。`velocity_to_depth(v)` で v→z 変換を提供 |
 | `LinearVelocityField` | v = k·z モデル（デフォルト） |
 | `PowerLawVelocityField` | v = k·z^α モデル（べき乗則モデル） |
@@ -132,23 +133,30 @@ stis_analysis/
 > **スコープ**: `processing` の責務は `_lac.fits` → `_proc.fits` 出力まで。
 > 3D Cube 結合・空間補間は Stage 3 で扱う。
 
-### Phase 3: Stage 3 開発（`reconstruct/`） 🔄 進行中
+### Phase 3: Stage 3 開発（`reconstruct/`） ✅ 完了（可視化は一部保留）
 - [x] **3-0** `reconstruct/` サブパッケージのスケルトン作成（`cube.py`, `velocity_field.py`, `pipeline.py`, `scripts/run_reconstruct.py`）
 - [x] **3-1** `DataCube` の実装（`cube.py`）
   - [x] `from_proc_files()` — `_proc.fits` (×6) 読み込み・velocity軸変換・raw cube 構築
   - [x] `interpolate()` — x方向をyピクセル間隔（0.05"/pix）に `scipy.interpolate.interp1d` で補間
   - [x] `sigma_v` / `sigma_x` / `sigma_y` / `sigma_z` — フラックス加重統計プロパティ（interpolated ステージ以降）
   - [x] `reconstruct(velocity_field)` — `velocity_field.velocity_to_depth(v)` で velocity→z 軸変換
-  - [ ] 可視化メソッド（`imshow_channel`, `plot_spectrum`, `imshow_integrated`）— pyvista 検証待ち
+  - [x] `view_3d()` — napari で 3D 表示・PNG 保存
+  - [ ] 可視化メソッド（`imshow_channel`, `plot_spectrum`, `imshow_integrated`）— matplotlib 2D 表示、未実装
 - [x] **3-2** `VelocityField` の設計・実装（`velocity_field.py`）
   - [x] 抽象基底クラス `VelocityField`（ABC）— `compute_k()`, `velocity_to_depth()` を抽象メソッドとして定義
   - [x] `LinearVelocityField` — v = k·z モデル（k = σ_v / σ_z）
   - [x] `PowerLawVelocityField` — v = k·z^α モデル（k = σ_v / σ_z^α）
 - [x] **3-3** `ReconstructPipeline` / `ReconstructResult` の実装（`pipeline.py`）
   - [x] `ReconstructPipeline.run()` — ファイル探索 → DataCube 構築 → 補間 → σ_z 自動計算 → 3D 再構成
-  - [ ] `ReconstructResult` 確認プロット（`plot_channel_map`, `plot_reconstructed_slice`）— pyvista 検証待ち
+  - [ ] `ReconstructResult` 確認プロット（`plot_channel_map`, `plot_reconstructed_slice`）— 未実装
 - [x] **3-4** `scripts/run_reconstruct.py` / `run_reconstruct_pipeline.py` の整備
 - [x] **3-5** `reconstruct/` のテスト整備（`test_cube.py`, `test_pipeline.py`、計80ケース）
+
+### Phase 3.5: 2D 可視化メソッドの実装（保留中）
+- [ ] `DataCube.imshow_channel(v_index)` — 指定速度スライスの 2D チャンネルマップ（matplotlib）
+- [ ] `DataCube.plot_spectrum(ix, iy)` — 指定ピクセルの 1D スペクトル（matplotlib）
+- [ ] `DataCube.imshow_integrated()` — velocity 積分した 2D マップ（matplotlib）
+- [ ] `ReconstructResult.plot_channel_map()` / `plot_reconstructed_slice()`
 
 ### Phase 4: `BaseImageModel` 抽出 (将来)
 - [ ] `processing/` 安定後に `core/image.py` へ共通基底クラスを抽出
@@ -260,14 +268,14 @@ pip install "stis-analysis[all]"
 [project.optional-dependencies]
 lacosmic    = ["lacosmic>=1.4.0", "scipy>=1.13"]
 processing  = ["stistools>=1.4.7", "scipy>=1.13", "crds>=12.0"]
-reconstruct = ["scipy>=1.13", "pyvista>=0.44"]
-all         = ["lacosmic>=1.4.0", "scipy>=1.13", "stistools>=1.4.7", "crds>=12.0", "pyvista>=0.44"]
+reconstruct = ["scipy>=1.13", "napari>=0.7.0", "PyQt6>=6.6"]
+all         = ["lacosmic>=1.4.0", "scipy>=1.13", "stistools>=1.4.7", "crds>=12.0", "napari>=0.7.0", "PyQt6>=6.6"]
 ```
 
 > **可視化ライブラリについて**
-> 当初は mayavi を予定していたが、stis_tools との依存コンフリクトおよび Python 3.13 + 新 VTK 環境でのビルド失敗により採用を見送った。
-> 現在は **pyvista** および **napari** を評価中。VTK 依存の問題が再現する場合は、
-> 処理パイプライン（lacosmic + processing）と再構成・可視化を別パッケージに分割することも検討する（→ [#20](https://github.com/HisadaRintaro/stis_analysis/issues/20)）。
+> 当初は mayavi → pyvista と検討したが、Python 3.13 + 新 VTK 環境での依存コンフリクトにより **napari** を採用した。
+> `DataCube.view_3d()` で 3D 表示・PNG 保存が可能（→ [#23](https://github.com/HisadaRintaro/stis_analysis/issues/23)）。
+> 選定経緯は [#20](https://github.com/HisadaRintaro/stis_analysis/issues/20) を参照。
 
 ---
 
