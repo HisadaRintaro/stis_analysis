@@ -131,11 +131,20 @@ assert recon_cube.z_array is not None
 print(f"  z_array : [{recon_cube.z_array[0]:.3f}, ..., {recon_cube.z_array[-1]:.3f}] arcsec")
 
 # ------------------------------------------------------------------ #
-# Step 7. 3D 可視化
+# Step 7. 3D 可視化（y 軸トリミング付き）
 # ------------------------------------------------------------------ #
 
 # SAVE_DIR を指定すると PNG として保存（GUI は開かない）
 # 例: SAVE_DIR = OUTPUT_DIR
 SAVE_DIR = None
 
-recon_cube.view_3d(save_dir=SAVE_DIR)
+# y_array の範囲を確認する（単位が正しいか確認のこと）
+assert recon_cube.y_array is not None
+print(f"\nStep 7: 可視化準備")
+print(f"  y_array : [{recon_cube.y_array[0]:.4f}, ..., {recon_cube.y_array[-1]:.4f}] arcsec  ({len(recon_cube.y_array)} pts)")
+
+# y 軸のトリミング範囲 [arcsec]（必要に応じて変更）
+Y_MIN: float | None = None  # None のとき全範囲
+Y_MAX: float | None = None  # None のとき全範囲
+
+recon_cube.trim_y(y_min=Y_MIN, y_max=Y_MAX).view_3d(save_dir=SAVE_DIR)

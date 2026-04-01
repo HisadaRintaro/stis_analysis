@@ -465,6 +465,55 @@ class DataCube:
         # 4. reconstructed ステージへ遷移
         return replace(self, data=data_z, z_array=z_grid)
 
+    def trim_y(
+        self,
+        y_min: float | None = None,
+        y_max: float | None = None,
+    ) -> "DataCube":
+        """y 軸（スリット方向）を物理座標で切り出す.
+
+        全ステージ（raw / interpolated / reconstructed）で使用可能。
+        `replace()` で新オブジェクトを返すため元の DataCube は変化しない。
+
+        Parameters
+        ----------
+        y_min : float | None, optional
+            トリミング下限 [arcsec]。None のとき y_array の最小値を使用。
+        y_max : float | None, optional
+            トリミング上限 [arcsec]。None のとき y_array の最大値を使用。
+
+        Returns
+        -------
+        DataCube
+            y 軸をトリミングした新しい DataCube（ステージは変化しない）
+
+        Raises
+        ------
+        ValueError
+            y_array が未設定の場合、または指定範囲に有効なピクセルがない場合。
+        """
+        if self.y_array is None:
+            raise ValueError(
+                "trim_y() は y_array が設定された DataCube でのみ使用できます。"
+            )
+
+        y_lo = y_min if y_min is not None else float(self.y_array.min())
+        y_hi = y_max if y_max is not None else float(self.y_array.max())
+
+        indices = np.where((self.y_array >= y_lo) & (self.y_array <= y_hi))[0]
+        if len(indices) == 0:
+            raise ValueError(
+                f"y_min={y_lo}, y_max={y_hi} の範囲に有効な y ピクセルがありません。"
+                f" y_array の範囲: [{self.y_array[0]:.4f}, {self.y_array[-1]:.4f}] arcsec"
+            )
+
+        i, j = int(indices[0]), int(indices[-1])
+        return replace(
+            self,
+            data=self.data[:, i : j + 1, :],
+            y_array=self.y_array[i : j + 1],
+        )
+
     # ------------------------------------------------------------------
     # 可視化メソッド
     # ------------------------------------------------------------------

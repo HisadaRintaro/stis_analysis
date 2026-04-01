@@ -270,6 +270,64 @@ class TestReconstruct:
 
 
 # ------------------------------------------------------------------
+# trim_y()
+# ------------------------------------------------------------------
+
+class TestTrimY:
+    def test_trim_y_data_shape(self, interp_cube: DataCube):
+        """trim_y 後に data の axis 1 が縮小される."""
+        assert interp_cube.y_array is not None
+        y_mid = float(interp_cube.y_array[len(interp_cube.y_array) // 2])
+        trimmed = interp_cube.trim_y(y_min=interp_cube.y_array[0], y_max=y_mid)
+        assert trimmed.data.shape[1] < interp_cube.data.shape[1]
+        assert trimmed.data.shape[0] == interp_cube.data.shape[0]
+        assert trimmed.data.shape[2] == interp_cube.data.shape[2]
+
+    def test_trim_y_array_updated(self, interp_cube: DataCube):
+        """trim_y 後の y_array が指定範囲に収まっている."""
+        assert interp_cube.y_array is not None
+        y_min, y_max = float(interp_cube.y_array[2]), float(interp_cube.y_array[7])
+        trimmed = interp_cube.trim_y(y_min=y_min, y_max=y_max)
+        assert trimmed.y_array is not None
+        assert float(trimmed.y_array[0]) >= y_min
+        assert float(trimmed.y_array[-1]) <= y_max
+        assert len(trimmed.y_array) == trimmed.data.shape[1]
+
+    def test_trim_y_other_axes_unchanged(self, interp_cube: DataCube):
+        """x_array / velocity_array は変化しない."""
+        assert interp_cube.y_array is not None
+        trimmed = interp_cube.trim_y(y_max=interp_cube.y_array[-2])
+        assert np.array_equal(trimmed.x_array, interp_cube.x_array)
+        assert np.array_equal(trimmed.velocity_array, interp_cube.velocity_array)
+
+    def test_trim_y_stage_preserved(self, interp_cube: DataCube):
+        """ステージ（is_interpolated）が保たれる."""
+        assert interp_cube.y_array is not None
+        trimmed = interp_cube.trim_y(y_max=interp_cube.y_array[-2])
+        assert trimmed.is_interpolated
+
+    def test_trim_y_on_reconstructed(self, recon_cube: DataCube):
+        """reconstructed cube でも動作する."""
+        assert recon_cube.y_array is not None
+        trimmed = recon_cube.trim_y(y_min=recon_cube.y_array[1], y_max=recon_cube.y_array[-2])
+        assert trimmed.is_reconstructed
+        assert trimmed.data.shape[1] < recon_cube.data.shape[1]
+
+    def test_trim_y_raises_when_y_array_none(self, interp_cube: DataCube):
+        """y_array が None のとき ValueError."""
+        from dataclasses import replace as dc_replace
+        cube_no_y = dc_replace(interp_cube, y_array=None)
+        with pytest.raises(ValueError, match="y_array が設定"):
+            cube_no_y.trim_y(y_min=0.0, y_max=1.0)
+
+    def test_trim_y_raises_when_no_valid_range(self, interp_cube: DataCube):
+        """範囲外の指定で ValueError."""
+        assert interp_cube.y_array is not None
+        with pytest.raises(ValueError, match="有効な y ピクセルがありません"):
+            interp_cube.trim_y(y_min=999.0, y_max=1000.0)
+
+
+# ------------------------------------------------------------------
 # view_3d()
 # ------------------------------------------------------------------
 

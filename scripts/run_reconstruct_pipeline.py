@@ -62,17 +62,27 @@ result = pipeline.run(
     save_picture=SAVE_PICTURE,
 )
 
+recon_cube = result.reconstructed_cube
+
 print(f"\nraw cube shape      : {result.raw_cube.data.shape}")
 print(f"interpolated shape  : {result.interpolated_cube.data.shape}")
-print(f"reconstructed shape : {result.reconstructed_cube.data.shape}")
+print(f"reconstructed shape : {recon_cube.data.shape}")
 print(f"velocity field k    : {result.velocity_field.k:.4f} km/s/arcsec")
 
+# y_array の範囲を確認する（単位が正しいか確認のこと）
+assert recon_cube.y_array is not None
+print(f"y_array             : [{recon_cube.y_array[0]:.4f}, ..., {recon_cube.y_array[-1]:.4f}] arcsec  ({len(recon_cube.y_array)} pts)")
+
 # ------------------------------------------------------------------ #
-# 可視化
+# 可視化（y 軸トリミング付き）
 # ------------------------------------------------------------------ #
+
+# y 軸のトリミング範囲 [arcsec]（必要に応じて変更）
+Y_MIN: float | None = None  # None のとき全範囲
+Y_MAX: float | None = None  # None のとき全範囲
 
 # SAVE_PICTURE = True のときは OUTPUT_DIR に PNG を保存（GUI は開かない）
 # False のときは napari GUI を起動して 3D 表示する
-result.reconstructed_cube.view_3d(
+recon_cube.trim_y(y_min=Y_MIN, y_max=Y_MAX).view_3d(
     save_dir=OUTPUT_DIR if SAVE_PICTURE else None,
 )
