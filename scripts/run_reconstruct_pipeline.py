@@ -66,3 +66,13 @@ print(f"\nraw cube shape      : {result.raw_cube.data.shape}")
 print(f"interpolated shape  : {result.interpolated_cube.data.shape}")
 print(f"reconstructed shape : {result.reconstructed_cube.data.shape}")
 print(f"velocity field k    : {result.velocity_field.k:.4f} km/s/arcsec")
+
+# ------------------------------------------------------------------ #
+# 可視化
+# ------------------------------------------------------------------ #
+
+# SAVE_PICTURE = True のときは OUTPUT_DIR に PNG を保存（GUI は開かない）
+# False のときは napari GUI を起動して 3D 表示する
+result.reconstructed_cube.view_3d(
+    save_dir=OUTPUT_DIR if SAVE_PICTURE else None,
+)

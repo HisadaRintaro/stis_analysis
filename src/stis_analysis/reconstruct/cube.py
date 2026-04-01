@@ -509,6 +509,53 @@ class DataCube:
         """
         raise NotImplementedError
 
+    def view_3d(
+        self,
+        colormap: str = "inferno",
+        contrast_limits: tuple[float, float] | None = None,
+        save_dir: Path | None = None,
+    ) -> None:
+        """napari で 3D キューブを表示する.
+
+        reconstructed ステージの `data`（shape: n_x, n_y, n_z）を napari Viewer で表示する。
+        `save_dir` を指定するとオフスクリーンで PNG に保存し、GUI は開かない。
+
+        Parameters
+        ----------
+        colormap : str, optional
+            napari カラーマップ名。デフォルト: ``"inferno"``
+        contrast_limits : tuple[float, float] | None, optional
+            カラースケールの範囲 ``(vmin, vmax)``。None の場合は napari が自動設定。
+        save_dir : Path, optional
+            保存先ディレクトリ。指定時は ``view_3d.png`` として保存し GUI は開かない。
+            None の場合は napari GUI を起動する。
+
+        Raises
+        ------
+        ValueError
+            reconstructed ステージでない場合。
+        """
+        import napari
+
+        if not self.is_reconstructed:
+            raise ValueError(
+                "view_3d() は reconstructed ステージの DataCube でのみ使用できます。"
+            )
+
+        kwargs: dict = dict(name="flux", colormap=colormap)
+        if contrast_limits is not None:
+            kwargs["contrast_limits"] = contrast_limits
+
+        if save_dir is None:
+            viewer = napari.Viewer()
+            viewer.add_image(self.data, **kwargs)
+            napari.run()
+        else:
+            viewer = napari.Viewer(show=False)
+            viewer.add_image(self.data, **kwargs)
+            viewer.screenshot(path=str(save_dir / "view_3d.png"), canvas_only=True)
+            viewer.close()
+
 
 # 循環インポートを避けるため VelocityField のアノテーション解決は実行時に行う
 from stis_analysis.reconstruct.velocity_field import VelocityField  # noqa: E402

@@ -1,5 +1,7 @@
 """DataCube のテスト."""
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
 
@@ -265,3 +267,40 @@ class TestReconstruct:
         recon = interp_cube.reconstruct(vf)
         assert recon.is_reconstructed
         assert recon.z_array is not None
+
+
+# ------------------------------------------------------------------
+# view_3d()
+# ------------------------------------------------------------------
+
+class TestView3d:
+    def test_raises_when_not_reconstructed(self, interp_cube: DataCube):
+        """interpolated ステージでは ValueError."""
+        with pytest.raises(ValueError, match="reconstructed ステージ"):
+            interp_cube.view_3d()
+
+    def test_save_dir(self, recon_cube: DataCube, tmp_path):
+        """save_dir 指定時にスクリーンショットが保存される."""
+        mock_viewer = MagicMock()
+        with patch("napari.Viewer", return_value=mock_viewer), \
+             patch("napari.run"):
+            recon_cube.view_3d(save_dir=tmp_path)
+
+        mock_viewer.add_image.assert_called_once_with(
+            recon_cube.data, name="flux", colormap="inferno"
+        )
+        mock_viewer.screenshot.assert_called_once_with(
+            path=str(tmp_path / "view_3d.png"), canvas_only=True
+        )
+        mock_viewer.close.assert_called_once()
+
+    def test_save_dir_with_contrast_limits(self, recon_cube: DataCube, tmp_path):
+        """contrast_limits が add_image に渡される."""
+        mock_viewer = MagicMock()
+        with patch("napari.Viewer", return_value=mock_viewer), \
+             patch("napari.run"):
+            recon_cube.view_3d(contrast_limits=(0.0, 1.0), save_dir=tmp_path)
+
+        mock_viewer.add_image.assert_called_once_with(
+            recon_cube.data, name="flux", colormap="inferno", contrast_limits=(0.0, 1.0)
+        )

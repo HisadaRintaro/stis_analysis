@@ -39,7 +39,7 @@ RECESSION_VELOCITY = 1148.0   # NGC1068 後退速度 [km/s]
 # 各スリットの x 位置 [arcsec]（ファイル順に対応）
 SLIT_POSITIONS: list[float] = [
     # TODO: 実際のスリット位置に書き換えてください
-    -0.125, -0.075, -0.025, 0.025, 0.075, 0.125,
+    0.0, 0.2, 0.4, 0.6, 0.8, 1.0,
 ]
 
 # x 方向補間グリッド間隔 [arcsec/pix]
@@ -129,3 +129,13 @@ print(f"\nStep 6: reconstruct 完了")
 print(f"  shape   : {recon_cube.data.shape}  (n_x, n_y, n_z)")
 assert recon_cube.z_array is not None
 print(f"  z_array : [{recon_cube.z_array[0]:.3f}, ..., {recon_cube.z_array[-1]:.3f}] arcsec")
+
+# ------------------------------------------------------------------ #
+# Step 7. 3D 可視化
+# ------------------------------------------------------------------ #
+
+# SAVE_DIR を指定すると PNG として保存（GUI は開かない）
+# 例: SAVE_DIR = OUTPUT_DIR
+SAVE_DIR = None
+
+recon_cube.view_3d(save_dir=SAVE_DIR)
