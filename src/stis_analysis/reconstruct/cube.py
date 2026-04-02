@@ -32,7 +32,7 @@ raw / interpolated / reconstructed の全ステージを単一クラスで統一
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -71,6 +71,10 @@ class DataCube:
         reconstructed ステージ: 深度軸 [arcsec]。shape: (n_z,)
     source_paths : tuple[Path, ...] | None
         読み込み元 FITS ファイルパスのリスト
+    reader_collection : ReaderCollection | None
+        from_proc_files() で生成した ReaderCollection。ヘッダー確認に使用可能。repr には出力しない。
+    image_collection : ImageCollection | None
+        from_proc_files() で生成した ImageCollection。各スリットの SCI データ確認に使用可能。repr には出力しない。
     """
 
     data: np.ndarray
@@ -82,6 +86,8 @@ class DataCube:
     y_array: np.ndarray | None = None
     z_array: np.ndarray | None = None
     source_paths: tuple[Path, ...] | None = None
+    reader_collection: ReaderCollection | None = field(default=None, repr=False)
+    image_collection: ImageCollection | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------
     # ステージ判定プロパティ
@@ -221,6 +227,8 @@ class DataCube:
             y_array=y_array,
             z_array=None,
             source_paths=tuple(paths),
+            reader_collection=readers,
+            image_collection=collection,
         )
 
     # ------------------------------------------------------------------

@@ -176,6 +176,13 @@ class ReaderCollection:
         """
         return cls(readers=[STISFitsReader.open(p) for p in paths])
 
+    def __repr__(self) -> str:
+        lines = [f"ReaderCollection({len(self.readers)} files)"]
+        for i, reader in enumerate(self.readers):
+            shape = reader.data[1].shape if 1 in reader.data else "N/A"
+            lines.append(f"  [{i}] {reader.filename.name}  SCI shape={shape}")
+        return "\n".join(lines)
+
     def __len__(self) -> int:
         return len(self.readers)
 

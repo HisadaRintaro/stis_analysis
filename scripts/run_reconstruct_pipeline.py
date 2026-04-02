@@ -33,7 +33,7 @@ RECESSION_VELOCITY = 1148.0   # NGC1068 後退速度 [km/s]
 # 各スリットの x 位置 [arcsec]（ファイル順に対応）
 SLIT_POSITIONS: list[float] = [
     # TODO: 実際のスリット位置に書き換えてください
-    -0.125, -0.075, -0.025, 0.025, 0.075, 0.125,
+    0.0, 0.2, 0.4, 0.6, 0.8, 1.0,
 ]
 
 # 速度場モデル: "linear" or "power_law"
