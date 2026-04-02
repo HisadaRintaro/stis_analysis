@@ -17,10 +17,13 @@ src/stis_analysis/
 
 scripts/
   run_lacosmic.py              宇宙線除去（ステップ確認版）
+  run_lacosmic_pipeline.py     宇宙線除去（ワンショット版）
   run_processing.py            STIS 処理（ステップ確認版）
   run_processing_pipeline.py   STIS 処理（ワンショット版）
   run_reconstruct.py           3D 再構成（ステップ確認版）
   run_reconstruct_pipeline.py  3D 再構成（ワンショット版）
+  check_lacosmic_residual.py   LA-Cosmic 残差確認
+  convolve2d_reference.py      convolve2d 参考実装
 
 tests/
   test_core/ test_lacosmic/ test_processing/ test_reconstruct/

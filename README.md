@@ -60,7 +60,7 @@ stis_analysis/
 │   ├── test_core/
 │   ├── test_lacosmic/
 │   ├── test_processing/               ← test_image.py, test_pipeline.py
-│   └── test_reconstruct/              ← （実装予定）
+│   └── test_reconstruct/              ← test_cube.py, test_pipeline.py
 │
 ├── pyproject.toml
 └── README.md
