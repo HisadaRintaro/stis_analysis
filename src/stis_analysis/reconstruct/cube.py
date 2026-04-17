@@ -599,7 +599,20 @@ class DataCube:
                 "view_3d() は reconstructed ステージの DataCube でのみ使用できます。"
             )
 
-        kwargs: dict = dict(name="flux", colormap=colormap)
+        assert self.x_array is not None
+        assert self.y_array is not None
+        assert self.z_array is not None
+
+        # 各軸のピクセルサイズ [arcsec] を物理スケールとして napari に渡す
+        dx = float(self.x_array[1] - self.x_array[0])
+        dy = float(self.y_array[1] - self.y_array[0])
+        dz = float(self.z_array[1] - self.z_array[0])
+
+        kwargs: dict = dict(
+            name="flux",
+            colormap=colormap,
+            scale=(dx, dy, dz),  # arcsec/pixel — data shape: (n_x, n_y, n_z)
+        )
         if contrast_limits is not None:
             kwargs["contrast_limits"] = contrast_limits
 

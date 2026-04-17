@@ -78,8 +78,8 @@ print(f"y_array             : [{recon_cube.y_array[0]:.4f}, ..., {recon_cube.y_a
 # ------------------------------------------------------------------ #
 
 # y 軸のトリミング範囲 [arcsec]（必要に応じて変更）
-Y_MIN: float | None = None  # None のとき全範囲
-Y_MAX: float | None = None  # None のとき全範囲
+Y_MIN: float | None = -10  # None のとき全範囲
+Y_MAX: float | None = 10  # None のとき全範囲
 
 # SAVE_PICTURE = True のときは OUTPUT_DIR に PNG を保存（GUI は開かない）
 # False のときは napari GUI を起動して 3D 表示する
