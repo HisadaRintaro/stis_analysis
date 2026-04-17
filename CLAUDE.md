@@ -139,6 +139,13 @@ poetry run pyright src/
 poetry run pytest tests/test_reconstruct/ -v
 ```
 
+## コミット前のチェックリスト
+
+コミットする際は必ず以下を更新すること：
+
+1. **CLAUDE.md** — 設計・仕様・メソッドの変更を該当セクションに反映する
+2. **README.md** — ユーザー向けの説明（機能概要・使い方・依存関係）に変更が影響する場合は更新する
+
 ## 実データ確認時のチェックリスト（issue #25）
 
 ```python
